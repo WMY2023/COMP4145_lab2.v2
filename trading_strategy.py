@@ -40,6 +40,18 @@ def identify_golden_cross(data):
     data['GoldenCross'] = (data['MA50'] > data['MA200']) & (data['MA50'].shift(1) <= data['MA200'].shift(1))
     return data
 
+# Calculate Bollinger Bands
+def calculate_bollinger_bands(data, window=20, num_std=2):
+    """
+    Calculate Bollinger Bands for the given data.
+    Adds 'BB_Middle', 'BB_Upper', and 'BB_Lower' columns to the DataFrame.
+    """
+    data['BB_Middle'] = data['Close'].rolling(window=window).mean()
+    data['BB_Std'] = data['Close'].rolling(window=window).std()
+    data['BB_Upper'] = data['BB_Middle'] + num_std * data['BB_Std']
+    data['BB_Lower'] = data['BB_Middle'] - num_std * data['BB_Std']
+    return data
+
 # Implement trading strategy
 def implement_strategy(data):
     positions = []
@@ -137,6 +149,9 @@ def main():
 
     # Identify golden cross
     data = identify_golden_cross(data)
+
+    # Calculate Bollinger Bands
+    data = calculate_bollinger_bands(data)
 
     # Implement strategy
     positions = implement_strategy(data)

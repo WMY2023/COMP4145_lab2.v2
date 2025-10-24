@@ -145,16 +145,30 @@ def get_statistics(positions):
         'Average Holding Days': avg_holding
     }
 
+def calculate_bollinger_bands(data, window=20, num_std=2):
+    """
+    Calculate Bollinger Bands for the given data.
+    Adds 'BB_Middle', 'BB_Upper', and 'BB_Lower' columns to the DataFrame.
+    """
+    data['BB_Middle'] = data['Close'].rolling(window=window).mean()
+    data['BB_Std'] = data['Close'].rolling(window=window).std()
+    data['BB_Upper'] = data['BB_Middle'] + num_std * data['BB_Std']
+    data['BB_Lower'] = data['BB_Middle'] - num_std * data['BB_Std']
+    return data
+
 # Streamlit app
 st.set_page_config(page_title="Trading Strategy Dashboard", layout="wide")
 
-menu = ["Price Chart", "Trade Statistics", "Detailed Trades"]
+menu = ["Golden Cross Chart", "Bollinger Bands Chart", "Trade Statistics", "Detailed Trades"]
 choice = st.sidebar.radio("Select Page", menu)
 
 price_data, positions = load_data()
 
-if choice == "Price Chart":
-    st.title("Price Chart with Moving Averages and Trades")
+# Always calculate Bollinger Bands for the chart
+price_data = calculate_bollinger_bands(price_data)
+
+if choice == "Golden Cross Chart":
+    st.title("Golden Cross: Price Chart with Moving Averages and Trades")
     if not price_data.empty:
         fig, ax = plt.subplots(figsize=(14, 6))
         ax.plot(price_data.index, price_data['Close'], label='Close Price', color='blue')
@@ -163,6 +177,28 @@ if choice == "Price Chart":
         if 'MA200' in price_data:
             ax.plot(price_data.index, price_data['MA200'], label='MA200', color='green')
         # Plot buy/sell points
+        if not positions.empty:
+            ax.scatter(positions['BuyDate'], positions['BuyPrice'], color='red', marker='o', label='Buy', zorder=5)
+            ax.scatter(positions['SellDate'], positions['SellPrice'], color='purple', marker='o', label='Sell', zorder=5)
+        ax.set_xlabel('Date')
+        ax.set_ylabel('Price')
+        ax.legend()
+        st.pyplot(fig)
+    else:
+        st.write("No price data available.")
+
+elif choice == "Bollinger Bands Chart":
+    st.title("Bollinger Bands: Price Chart with Bands and Buy/Sell Signals")
+    if not price_data.empty:
+        fig, ax = plt.subplots(figsize=(14, 6))
+        ax.plot(price_data.index, price_data['Close'], label='Close Price', color='blue')
+        if 'BB_Middle' in price_data:
+            ax.plot(price_data.index, price_data['BB_Middle'], label='BB Middle', color='orange')
+        if 'BB_Upper' in price_data:
+            ax.plot(price_data.index, price_data['BB_Upper'], label='BB Upper', color='green', linestyle='--')
+        if 'BB_Lower' in price_data:
+            ax.plot(price_data.index, price_data['BB_Lower'], label='BB Lower', color='red', linestyle='--')
+        # Plot buy/sell points (same as Golden Cross chart)
         if not positions.empty:
             ax.scatter(positions['BuyDate'], positions['BuyPrice'], color='red', marker='o', label='Buy', zorder=5)
             ax.scatter(positions['SellDate'], positions['SellPrice'], color='purple', marker='o', label='Sell', zorder=5)
