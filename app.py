@@ -14,6 +14,8 @@ from trading_methods import (
     implement_bollinger_strategy,
     obv_strategy,
     atr_strategy,
+    simple_forecast,
+    generate_suggestion,
 )
 
 # Download stock data for a given ticker and period
@@ -104,7 +106,7 @@ def run_selected_method(price_data, method):
         return pd.DataFrame()
 
 
-def plot_price_obv_atr(price_data, positions, method=None, buy_color='red', sell_color='purple'):
+def plot_price_obv_atr(price_data, positions, method=None, buy_color='red', sell_color='purple', forecast_df=None):
     """Return a matplotlib Figure showing price, OBV and ATR with buy/sell markers for the provided positions.
 
     The plot follows the same appearance as the main Chart page. If `method` is provided,
@@ -133,6 +135,14 @@ def plot_price_obv_atr(price_data, positions, method=None, buy_color='red', sell
     if not positions.empty:
         ax_price.scatter(positions['BuyDate'], positions['BuyPrice'], color=buy_color, marker='o', label='Buy', zorder=5)
         ax_price.scatter(positions['SellDate'], positions['SellPrice'], color=sell_color, marker='o', label='Sell', zorder=5)
+
+    # Forecast overlay
+    if forecast_df is not None and not forecast_df.empty:
+        try:
+            ax_price.plot(forecast_df.index, forecast_df['Forecast'], linestyle='--', color='magenta', label='Forecast')
+            ax_price.scatter(forecast_df.index, forecast_df['Forecast'], color='magenta', marker='D')
+        except Exception:
+            pass
 
     ax_price.set_ylabel('Price')
     ax_price.legend(loc='upper left')
@@ -173,6 +183,13 @@ method = st.sidebar.selectbox("Strategy / Method", options=[
 ], index=0)
 run = st.sidebar.button("Run")
 
+# Forecast controls
+st.sidebar.markdown("---")
+enable_forecast = st.sidebar.checkbox("Show forecast", value=False)
+forecast_days = st.sidebar.number_input("Forecast days", min_value=1, max_value=60, value=5)
+forecast_method = st.sidebar.selectbox("Forecast method", options=['linear', 'ma', 'ema'], index=0)
+forecast_window = st.sidebar.number_input("Forecast window (history points)", min_value=5, max_value=365, value=60)
+
 menu = ["Chart", "Trade Statistics", "Detailed Trades", "Compare Methods"]
 choice = st.sidebar.radio("Select Page", menu)
 
@@ -193,6 +210,10 @@ positions = pd.DataFrame()
 if not price_data.empty:
     positions = run_selected_method(price_data, method)
 
+forecast_series = None
+forecast_df = None
+suggestion = None
+
 # Diagnostics for troubleshooting why strategies may produce no trades
 if not price_data.empty:
     ma_valid = price_data.dropna(subset=['MA50','MA200']) if {'MA50','MA200'}.issubset(price_data.columns) else pd.DataFrame()
@@ -212,49 +233,35 @@ if not price_data.empty:
 if choice == "Chart":
     st.title(f"{method}: Price Chart")
     if not price_data.empty:
-        # Create 3-row subplot: price, OBV, ATR
-        fig, (ax_price, ax_obv, ax_atr) = plt.subplots(3, 1, figsize=(14, 10), sharex=True, gridspec_kw={"height_ratios": [3, 1, 1]})
-
-        # Price plot
-        ax_price.plot(price_data.index, price_data['Close'], label='Close Price', color='blue')
-        if method.startswith("Golden Cross"):
-            if 'MA50' in price_data:
-                ax_price.plot(price_data.index, price_data['MA50'], label='MA50', color='orange')
-            if 'MA200' in price_data:
-                ax_price.plot(price_data.index, price_data['MA200'], label='MA200', color='green')
-        elif method == "Bollinger Bands":
-            if 'BB_Middle' in price_data:
-                ax_price.plot(price_data.index, price_data['BB_Middle'], label='BB Middle', color='orange')
-            if 'BB_Upper' in price_data:
-                ax_price.plot(price_data.index, price_data['BB_Upper'], label='BB Upper', color='green', linestyle='--')
-            if 'BB_Lower' in price_data:
-                ax_price.plot(price_data.index, price_data['BB_Lower'], label='BB Lower', color='red', linestyle='--')
-
-        # Buy/sell on price axis
-        if not positions.empty:
-            ax_price.scatter(positions['BuyDate'], positions['BuyPrice'], color='red', marker='o', label='Buy', zorder=5)
-            ax_price.scatter(positions['SellDate'], positions['SellPrice'], color='purple', marker='o', label='Sell', zorder=5)
-
-        ax_price.set_ylabel('Price')
-        ax_price.legend(loc='upper left')
-
-        # OBV plot
-        if 'OBV' in price_data:
-            ax_obv.plot(price_data.index, price_data['OBV'], label='OBV', color='black')
-            ax_obv.set_ylabel('OBV')
-        else:
-            ax_obv.text(0.5, 0.5, 'OBV not available', ha='center', va='center')
-
-        # ATR plot
-        if 'ATR' in price_data:
-            ax_atr.plot(price_data.index, price_data['ATR'], label='ATR', color='brown')
-            ax_atr.set_ylabel('ATR')
-        else:
-            ax_atr.text(0.5, 0.5, 'ATR not available', ha='center', va='center')
-
-        ax_atr.set_xlabel('Date')
-        fig.tight_layout()
+        # Use the shared plotting helper so Chart and Compare behave identically
+        forecast_df = None
+        if enable_forecast:
+            # compute forecast (the helper may return a Series or a DataFrame)
+            forecast_series = simple_forecast(price_data, days=int(forecast_days), method=forecast_method, window=int(forecast_window))
+            # normalize to forecast_df (DataFrame with 'Forecast' column)
+            if isinstance(forecast_series, pd.DataFrame):
+                # already a DataFrame (expected with a 'Forecast' column)
+                if 'Forecast' in forecast_series.columns:
+                    forecast_df = forecast_series.copy()
+                    suggestion = generate_suggestion(price_data, forecast_df['Forecast'])
+                else:
+                    # if DataFrame but different shape, try to take first column
+                    first_col = forecast_series.columns[0]
+                    forecast_df = forecast_series[[first_col]].rename(columns={first_col: 'Forecast'})
+                    suggestion = generate_suggestion(price_data, forecast_df['Forecast'])
+            elif isinstance(forecast_series, pd.Series):
+                if not forecast_series.empty:
+                    forecast_df = forecast_series.to_frame(name='Forecast')
+                    suggestion = generate_suggestion(price_data, forecast_series)
+            else:
+                # unexpected type: ignore
+                forecast_df = None
+        fig = plot_price_obv_atr(price_data, positions, method=method, buy_color='red', sell_color='purple', forecast_df=forecast_df)
         st.pyplot(fig)
+        # show suggestion if available
+        if suggestion:
+            st.markdown("**Prediction suggestion:**")
+            st.info(f"{suggestion['recommendation']}: {suggestion['reason']}")
     else:
         st.write("No price data available.")
 

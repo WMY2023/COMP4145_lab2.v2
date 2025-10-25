@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from typing import Optional
 
 
 def calculate_moving_averages(data: pd.DataFrame) -> pd.DataFrame:
@@ -257,3 +258,171 @@ def atr_strategy(data: pd.DataFrame, atr_window: int = 14, entry_mult: float = 1
         })
 
     return pd.DataFrame(positions)
+
+
+def simple_forecast(data: pd.DataFrame, days: int = 5, window: int = 20, method: str = 'linear') -> pd.Series:
+    """Produce a simple linear forecast for the next `days` trading days using a linear fit on the
+    last `window` close prices. Returns a pandas Series indexed by business days after the last index.
+    This is a lightweight, illustrative predictor (not a production model).
+    """
+    df = data.copy()
+    if df.empty or 'Close' not in df.columns:
+        return pd.Series(dtype=float)
+
+    x = np.arange(len(df))
+    y = df['Close'].values
+    # use only recent window
+    if len(y) >= max(5, window):
+        x = x[-window:]
+        y = y[-window:]
+
+    # choose method
+    slope, intercept = 0.0, float(y[-1])
+    if method == 'linear':
+        try:
+            coeffs = np.polyfit(x, y, 1)
+            slope, intercept = coeffs[0], coeffs[1]
+        except Exception:
+            slope, intercept = 0.0, float(y[-1])
+    elif method == 'ma':
+        # forecast as repeating the last moving average value
+        try:
+            ma = pd.Series(y).rolling(window=min(len(y), window)).mean().iloc[-1]
+            slope, intercept = 0.0, float(ma if not pd.isna(ma) else y[-1])
+        except Exception:
+            slope, intercept = 0.0, float(y[-1])
+    elif method == 'ema':
+        try:
+            ema = pd.Series(y).ewm(span=min(len(y), window), adjust=False).mean().iloc[-1]
+            slope, intercept = 0.0, float(ema if not pd.isna(ema) else y[-1])
+        except Exception:
+            slope, intercept = 0.0, float(y[-1])
+    else:
+        # default fallback
+        try:
+            coeffs = np.polyfit(x, y, 1)
+            slope, intercept = coeffs[0], coeffs[1]
+        except Exception:
+            slope, intercept = 0.0, float(y[-1])
+
+    last_idx = df.index[-1]
+    # create business-day index for forecast
+    try:
+        future_index = pd.bdate_range(start=last_idx + pd.Timedelta(days=1), periods=days)
+    except Exception:
+        future_index = pd.date_range(start=last_idx + pd.Timedelta(days=1), periods=days)
+
+    # map future x values
+    start_x = (len(data) - 1) if len(data) > 0 else 0
+    future_x = np.arange(start_x + 1, start_x + 1 + days)
+    preds = intercept + slope * future_x
+    return pd.Series(data=preds, index=future_index)
+
+
+def generate_suggestion(data: pd.DataFrame, forecast: pd.Series, atr_window: int = 14) -> dict:
+    """Generate a simple suggestion (Buy/Sell/Hold) based on forecast and ATR volatility.
+
+    Logic:
+    - Compute predicted_pct = (last_forecast / last_close - 1) * 100
+    - Compute ATR% = (ATR / last_close) * 100 (if ATR available)
+    - If predicted_pct > 1.5 * ATR% => Suggest BUY
+    - If predicted_pct < -1.5 * ATR% => Suggest SELL
+    - Else => Hold
+    Returns a dict with keys: predicted_pct, atr_pct, recommendation, reason
+    """
+    result = {
+        'predicted_pct': None,
+        'atr_pct': None,
+        'recommendation': 'Hold',
+        'reason': 'Insufficient data'
+    }
+
+    if data.empty or 'Close' not in data.columns or forecast.empty:
+        return result
+
+    last_close = float(data['Close'].iloc[-1])
+    last_pred = float(forecast.iloc[-1])
+    predicted_pct = (last_pred / last_close - 1) * 100
+    result['predicted_pct'] = predicted_pct
+
+    # ATR
+    if 'ATR' not in data.columns:
+        data = calculate_atr(data, window=atr_window)
+    atr = data['ATR'].iloc[-1] if 'ATR' in data.columns and not pd.isna(data['ATR'].iloc[-1]) else None
+    if atr is not None and last_close > 0:
+        atr_pct = (atr / last_close) * 100
+        result['atr_pct'] = atr_pct
+    else:
+        # fallback threshold
+        result['atr_pct'] = 1.0
+
+    threshold = 1.5 * (result['atr_pct'] or 1.0)
+    if predicted_pct > threshold:
+        result['recommendation'] = 'Consider BUY'
+        result['reason'] = f'Predicted +{predicted_pct:.2f}% > threshold {threshold:.2f}% (ATR-based)'
+    elif predicted_pct < -threshold:
+        result['recommendation'] = 'Consider SELL'
+        result['reason'] = f'Predicted {predicted_pct:.2f}% < -{threshold:.2f}% (ATR-based)'
+    else:
+        result['recommendation'] = 'Hold'
+        result['reason'] = f'Predicted {predicted_pct:.2f}% within threshold ±{threshold:.2f}%'
+
+    return result
+
+
+def simple_forecast(data: pd.DataFrame, days: int = 5, method: str = 'linear', window: int = 60, degree: int = 1) -> pd.DataFrame:
+    """Produce a simple forecast for the 'Close' price.
+
+    Methods supported:
+    - 'ma': repeat the moving average of last `window` closes
+    - 'ema': use exponentially weighted moving average as level forecast
+    - 'linear': fit a polynomial (degree) to the last `window` closes and extrapolate
+
+    Returns a DataFrame with a DatetimeIndex for the next `days` periods and a 'Forecast' column.
+    """
+    df = data.copy()
+    if df.empty or 'Close' not in df.columns:
+        return pd.DataFrame()
+
+    # infer delta between last two points (fallback to 1 day)
+    if len(df.index) >= 2:
+        delta = df.index[-1] - df.index[-2]
+    else:
+        delta = pd.Timedelta(days=1)
+
+    # choose the history window for fitting
+    hist = df['Close'].dropna()
+    if window <= 0:
+        window = min(60, len(hist))
+    hist = hist.iloc[-window:]
+    if hist.empty:
+        return pd.DataFrame()
+
+    last_ts = df.index[-1]
+    freq = delta
+    future_index = [last_ts + (i + 1) * freq for i in range(days)]
+
+    if method == 'ma':
+        val = hist.mean()
+        forecast_values = [val] * days
+    elif method == 'ema':
+        span = max(3, min(window, 30))
+        val = hist.ewm(span=span, adjust=False).mean().iloc[-1]
+        forecast_values = [val] * days
+    else:
+        # linear / polynomial fit on integer x
+        x = np.arange(len(hist))
+        y = hist.values
+        deg = max(1, int(degree))
+        # if not enough points, fallback to MA
+        if len(x) <= deg:
+            val = hist.mean()
+            forecast_values = [val] * days
+        else:
+            coeffs = np.polyfit(x, y, deg)
+            poly = np.poly1d(coeffs)
+            x_future = np.arange(len(hist), len(hist) + days)
+            forecast_values = poly(x_future).tolist()
+
+    forecast_df = pd.DataFrame({'Forecast': forecast_values}, index=pd.to_datetime(future_index))
+    return forecast_df
