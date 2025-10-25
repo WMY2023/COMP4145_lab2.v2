@@ -49,6 +49,7 @@ def analyze_results(positions):
 
     print("\n===== Trading Strategy Results (Golden Cross)=====")
     print(f"Total Trades: {total_trades}")
+
     print(f"Winning Trades: {win_trades} ({win_rate:.2f}%)")
     print(f"Losing Trades: {loss_trades}")
     print(f"Average Profit: {avg_profit:.2f}%")
@@ -62,6 +63,7 @@ def load_data(ticker="MSFT", period="5y", interval="1d"):
         price_data = calculate_moving_averages(price_data)
         price_data = identify_golden_cross(price_data)
     except Exception:
+
         price_data = pd.DataFrame()
     return price_data
 
@@ -88,6 +90,63 @@ def get_statistics(positions):
     }
 
 
+def run_selected_method(price_data, method):
+    """Run the selected method on price_data and return positions DataFrame."""
+    if method.startswith("Golden Cross"):
+        return implement_strategy(price_data)
+    elif method == "Bollinger Bands":
+        return implement_bollinger_strategy(price_data)
+    elif method == "OBV Strategy":
+        return obv_strategy(price_data)
+    elif method == "ATR Strategy":
+        return atr_strategy(price_data)
+    else:
+        return pd.DataFrame()
+
+
+def plot_price_obv_atr(price_data, positions, buy_color='red', sell_color='purple'):
+    """Return a matplotlib Figure showing price, OBV and ATR with buy/sell markers for the provided positions."""
+    fig, (ax_price, ax_obv, ax_atr) = plt.subplots(3, 1, figsize=(10, 8), sharex=True, gridspec_kw={"height_ratios": [3, 1, 1]})
+
+    # Price plot
+    ax_price.plot(price_data.index, price_data['Close'], label='Close Price', color='blue')
+    if 'MA50' in price_data and 'MA200' in price_data:
+        ax_price.plot(price_data.index, price_data['MA50'], label='MA50', color='orange')
+        ax_price.plot(price_data.index, price_data['MA200'], label='MA200', color='green')
+    if 'BB_Middle' in price_data:
+        ax_price.plot(price_data.index, price_data['BB_Middle'], label='BB Middle', color='orange')
+    if 'BB_Upper' in price_data:
+        ax_price.plot(price_data.index, price_data['BB_Upper'], label='BB Upper', color='green', linestyle='--')
+    if 'BB_Lower' in price_data:
+        ax_price.plot(price_data.index, price_data['BB_Lower'], label='BB Lower', color='red', linestyle='--')
+
+    # Buy/sell on price axis
+    if not positions.empty:
+        ax_price.scatter(positions['BuyDate'], positions['BuyPrice'], color=buy_color, marker='o', label='Buy', zorder=5)
+        ax_price.scatter(positions['SellDate'], positions['SellPrice'], color=sell_color, marker='x', label='Sell', zorder=5)
+
+    ax_price.set_ylabel('Price')
+    ax_price.legend(loc='upper left')
+
+    # OBV plot
+    if 'OBV' in price_data:
+        ax_obv.plot(price_data.index, price_data['OBV'], label='OBV', color='black')
+        ax_obv.set_ylabel('OBV')
+    else:
+        ax_obv.text(0.5, 0.5, 'OBV not available', ha='center', va='center')
+
+    # ATR plot
+    if 'ATR' in price_data:
+        ax_atr.plot(price_data.index, price_data['ATR'], label='ATR', color='brown')
+        ax_atr.set_ylabel('ATR')
+    else:
+        ax_atr.text(0.5, 0.5, 'ATR not available', ha='center', va='center')
+
+    ax_atr.set_xlabel('Date')
+    fig.tight_layout()
+    return fig
+
+
 
 # Streamlit app
 st.set_page_config(page_title="Trading Strategy Dashboard", layout="wide")
@@ -105,7 +164,7 @@ method = st.sidebar.selectbox("Strategy / Method", options=[
 ], index=0)
 run = st.sidebar.button("Run")
 
-menu = ["Chart", "Trade Statistics", "Detailed Trades"]
+menu = ["Chart", "Trade Statistics", "Detailed Trades", "Compare Methods"]
 choice = st.sidebar.radio("Select Page", menu)
 
 # Load data for selected ticker/period
@@ -205,3 +264,71 @@ elif choice == "Detailed Trades":
         st.dataframe(positions)
     else:
         st.write("No trade records available.")
+
+elif choice == "Compare Methods":
+    st.title("Compare Two Methods")
+    if price_data.empty:
+        st.write("No price data available for the selected ticker/period.")
+    else:
+        # Allow user to pick two methods to compare
+        col_a, col_b = st.columns(2)
+        methods_list = [
+            "Golden Cross (MA50/MA200)",
+            "Bollinger Bands",
+            "OBV Strategy",
+            "ATR Strategy",
+        ]
+        with col_a:
+            method1 = st.selectbox("Method 1", options=methods_list, index=0, key='method1')
+        with col_b:
+            method2 = st.selectbox("Method 2", options=methods_list, index=1, key='method2')
+
+        run_compare = st.button("Run Comparison")
+
+        # If user clicks Run Comparison (or default run was pressed earlier), execute both
+        if run_compare or run:
+            pos1 = run_selected_method(price_data, method1)
+            pos2 = run_selected_method(price_data, method2)
+
+            # Show side-by-side charts
+            left, right = st.columns(2)
+            with left:
+                st.header(method1)
+                fig1 = plot_price_obv_atr(price_data, pos1, buy_color='red', sell_color='purple')
+                st.pyplot(fig1)
+                stats1 = get_statistics(pos1)
+                if stats1:
+                    st.table(pd.DataFrame(stats1, index=[0]))
+                else:
+                    st.write("No trades for this method.")
+
+            with right:
+                st.header(method2)
+                fig2 = plot_price_obv_atr(price_data, pos2, buy_color='green', sell_color='black')
+                st.pyplot(fig2)
+                stats2 = get_statistics(pos2)
+                if stats2:
+                    st.table(pd.DataFrame(stats2, index=[0]))
+                else:
+                    st.write("No trades for this method.")
+
+            # Combined summary
+            st.subheader("Combined Comparison")
+            df_compare = pd.DataFrame({
+                'Metric': list((stats1 or {}).keys()) if (stats1 or {}) else [],
+            })
+            # Build a comparison table for common metrics
+            if stats1 or stats2:
+                all_metrics = set()
+                if stats1:
+                    all_metrics.update(stats1.keys())
+                if stats2:
+                    all_metrics.update(stats2.keys())
+                rows = []
+                for k in sorted(all_metrics):
+                    rows.append({
+                        'Metric': k,
+                        'Method 1': (stats1.get(k) if stats1 else None),
+                        'Method 2': (stats2.get(k) if stats2 else None),
+                    })
+                st.table(pd.DataFrame(rows))

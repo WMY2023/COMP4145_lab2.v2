@@ -16,30 +16,59 @@ def identify_golden_cross(data: pd.DataFrame) -> pd.DataFrame:
     return data
 
 
-def implement_strategy(data: pd.DataFrame) -> pd.DataFrame:
+def implement_strategy(data: pd.DataFrame, target_pct: float = 0.15, max_holding_days: int = 60, stop_loss_pct: float = 0.07) -> pd.DataFrame:
+    """Golden Cross trading strategy with configurable take-profit and stop-loss.
+
+    Parameters
+    - data: DataFrame with at least 'Close' and 'GoldenCross' columns
+    - target_pct: take-profit as a decimal (e.g., 0.15 for 15%)
+    - max_holding_days: maximum days to hold before forced sell
+    - stop_loss_pct: stop-loss as a decimal (e.g., 0.07 for 7% drop)
+    """
     positions = []
-    data = data.iloc[200:].copy()
+    # skip the early rows where MA200 may be NaN
+    data = data.copy()
+    if 'GoldenCross' not in data.columns:
+        data = identify_golden_cross(calculate_moving_averages(data))
+
+    data = data.dropna(subset=['MA200']).copy()
     buy_dates = data[data['GoldenCross'] == True].index.tolist()
 
     for buy_date in buy_dates:
+        # ensure buy_date is in index
+        if buy_date not in data.index:
+            continue
         buy_price = data.loc[buy_date, 'Close']
-        target_price = buy_price * 1.15
-        max_sell_date = buy_date + pd.Timedelta(days=60)
-        sell_period = data.loc[buy_date:max_sell_date].copy()
-        target_reached = sell_period[sell_period['Close'] >= target_price]
+        target_price = buy_price * (1.0 + target_pct)
+        stop_price = buy_price * (1.0 - stop_loss_pct)
+        max_sell_date = buy_date + pd.Timedelta(days=max_holding_days)
 
-        if not target_reached.empty:
-            sell_date = target_reached.index[0]
-            sell_price = target_reached.loc[sell_date, 'Close']
-            sell_reason = "Target reached"
+        # consider sell window from next trading day through max_sell_date
+        sell_period = data.loc[buy_date:max_sell_date].copy()
+        if sell_period.empty:
+            continue
+
+        # locate all candidate events
+        target_hits = sell_period[sell_period['Close'] >= target_price]
+        stop_hits = sell_period[sell_period['Close'] <= stop_price]
+
+        # choose earliest event (stop or target) if any, otherwise last available date
+        candidate_events = []
+        if not target_hits.empty:
+            candidate_events.append((target_hits.index[0], target_hits.loc[target_hits.index[0], 'Close'], 'Target reached'))
+        if not stop_hits.empty:
+            candidate_events.append((stop_hits.index[0], stop_hits.loc[stop_hits.index[0], 'Close'], 'Stop loss'))
+
+        if candidate_events:
+            # pick earliest by timestamp
+            candidate_events.sort(key=lambda x: x[0])
+            sell_date, sell_price, sell_reason = candidate_events[0]
         else:
-            sell_date_candidates = sell_period.index.tolist()
-            if sell_date_candidates:
-                sell_date = sell_date_candidates[-1]
-                sell_price = data.loc[sell_date, 'Close']
-                sell_reason = "Max holding period"
-            else:
-                continue
+            # fallback: sell at last available date in sell_period
+            last_date = sell_period.index[-1]
+            sell_date = last_date
+            sell_price = sell_period.loc[last_date, 'Close']
+            sell_reason = 'Max holding period'
 
         holding_days = (sell_date - buy_date).days
         profit_pct = (sell_price / buy_price - 1) * 100
