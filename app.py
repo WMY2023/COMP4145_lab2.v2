@@ -1,9 +1,10 @@
+import streamlit as st
+import yfinance as yf
 import pandas as pd
 import numpy as np
-import yfinance as yf
-from datetime import datetime, timedelta
-import streamlit as st
 import matplotlib.pyplot as plt
+import time
+from datetime import datetime, timedelta
 from trading_methods import (
     calculate_obv,
     calculate_atr,
@@ -24,10 +25,6 @@ def get_stock_data(ticker, period="5y", interval="1d"):
     # Pass interval to history so users can choose weekly/monthly views
     data = stock.history(period=period, interval=interval)
     return data
-
-
-
- 
 
 # Analyze the results
 def analyze_results(positions):
@@ -65,7 +62,6 @@ def load_data(ticker="MSFT", period="5y", interval="1d"):
         price_data = calculate_moving_averages(price_data)
         price_data = identify_golden_cross(price_data)
     except Exception:
-
         price_data = pd.DataFrame()
     return price_data
 
@@ -91,7 +87,6 @@ def get_statistics(positions):
         'Average Holding Days': avg_holding
     }
 
-
 def run_selected_method(price_data, method):
     """Run the selected method on price_data and return positions DataFrame."""
     if method.startswith("Golden Cross"):
@@ -104,7 +99,6 @@ def run_selected_method(price_data, method):
         return atr_strategy(price_data)
     else:
         return pd.DataFrame()
-
 
 def get_portfolio_data(tickers, period="1y", interval="1d"):
     """Get stock data for multiple tickers in portfolio analysis."""
@@ -472,33 +466,157 @@ def plot_price_obv_atr(price_data, positions, method=None, buy_color='red', sell
     fig.tight_layout()
     return fig
 
-
-
 # Streamlit app
-st.set_page_config(page_title="Trading Strategy Dashboard", layout="wide")
+st.set_page_config(
+    page_title="📈 Trading Strategy Dashboard", 
+    layout="wide",
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': 'https://github.com/WMY2023/COMP4145_lab2.v2',
+        'Report a bug': 'https://github.com/WMY2023/COMP4145_lab2.v2/issues',
+        'About': "# Trading Strategy Dashboard\nA comprehensive tool for stock analysis and portfolio management."
+    }
+)
 
-# Sidebar controls: choose ticker, period, and method
-st.sidebar.header("Data & Strategy")
-ticker = st.sidebar.text_input("Ticker (USA stocks, e.g. AAPL, MSFT, AMZN)", value="MSFT")
-period = st.sidebar.selectbox("Period", options=["1wk", "1mo", "3mo", "6mo", "1y", "2y", "5y", "max"], index=4)
-interval = st.sidebar.selectbox("Interval", options=["1d", "1wk", "1mo"], index=0)
-method = st.sidebar.selectbox("Strategy / Method", options=[
-    "Golden Cross (MA50/MA200)",
-    "Bollinger Bands",
-    "OBV Strategy",
-    "ATR Strategy",
-], index=0)
-run = st.sidebar.button("Run")
+# Custom CSS for better UI
+st.markdown("""
+<style>
+    .main-header {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #1f77b4;
+        text-align: center;
+        margin-bottom: 2rem;
+        padding: 1rem;
+        background: linear-gradient(90deg, #f0f8ff, #e6f3ff);
+        border-radius: 10px;
+        border-left: 5px solid #1f77b4;
+    }
+    .metric-container {
+        background-color: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        border-left: 4px solid #28a745;
+    }
+    .stSelectbox > div > div {
+        background-color: #ffffff;
+    }
+    .sidebar-section {
+        background-color: #f1f3f4;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-# Forecast controls
+# Main header
+st.markdown('<h1 class="main-header">📈 Trading Strategy Dashboard</h1>', unsafe_allow_html=True)
+
+# Navigation menu at the top
+menu_options = {
+    "📊 Chart Analysis": "Chart", 
+    "📈 Trade Statistics": "Trade Statistics", 
+    "📋 Detailed Trades": "Detailed Trades", 
+    "⚖️ Compare Methods": "Compare Methods"
+}
+
+# Create tabs for main navigation
+tab_keys = list(menu_options.keys())
+selected_tab = st.tabs(tab_keys)
+
+# Sidebar controls with improved organization
+st.sidebar.markdown("## 🎯 Analysis Controls")
+
+# Stock selection section
+with st.sidebar.expander("🏢 Stock Selection", expanded=True):
+    ticker = st.text_input(
+        "Stock Ticker", 
+        value="MSFT", 
+        help="Enter a US stock ticker (e.g., AAPL, GOOGL, TSLA)",
+        placeholder="e.g., AAPL, MSFT, GOOGL"
+    )
+
+# Time period section
+with st.sidebar.expander("📅 Time Period", expanded=True):
+    period = st.selectbox(
+        "Analysis Period", 
+        options=["1wk", "1mo", "3mo", "6mo", "1y", "2y", "5y", "max"], 
+        index=4,
+        help="Select the time period for analysis"
+    )
+    interval = st.selectbox(
+        "Data Interval", 
+        options=["1d", "1wk", "1mo"], 
+        index=0,
+        help="Choose data granularity"
+    )
+
+# Strategy selection section
+with st.sidebar.expander("🎯 Trading Strategy", expanded=True):
+    method = st.selectbox(
+        "Strategy Type", 
+        options=[
+            "Golden Cross (MA50/MA200)",
+            "Bollinger Bands",
+            "OBV Strategy",
+            "ATR Strategy",
+        ], 
+        index=0,
+        help="Select trading strategy for analysis"
+    )
+
+# Forecast controls section
+with st.sidebar.expander("🔮 Forecast Options", expanded=False):
+    enable_forecast = st.checkbox("Enable Forecast", value=False)
+    if enable_forecast:
+        forecast_days = st.slider("Forecast Days", min_value=1, max_value=60, value=5)
+        forecast_method = st.selectbox("Forecast Method", options=['linear', 'ma', 'ema'], index=0)
+        forecast_window = st.slider("History Window", min_value=5, max_value=365, value=60)
+
+# Quick actions section
 st.sidebar.markdown("---")
-enable_forecast = st.sidebar.checkbox("Show forecast", value=False)
-forecast_days = st.sidebar.number_input("Forecast days", min_value=1, max_value=60, value=5)
-forecast_method = st.sidebar.selectbox("Forecast method", options=['linear', 'ma', 'ema'], index=0)
-forecast_window = st.sidebar.number_input("Forecast window (history points)", min_value=5, max_value=365, value=60)
+st.sidebar.markdown("### 🚀 Quick Actions")
+run = st.sidebar.button("🔄 Refresh Analysis", type="primary", use_container_width=True)
 
-menu = ["Chart", "Trade Statistics", "Detailed Trades", "Compare Methods", "Portfolio Analysis", "Portfolio Comparison"]
-choice = st.sidebar.radio("Select Page", menu)
+# Portfolio Analysis section
+with st.sidebar.expander("💼 Portfolio Analysis", expanded=False):
+    st.markdown("**Analyze Your Portfolio:**")
+    st.markdown("- Individual stock performance")
+    st.markdown("- Portfolio diversification analysis")
+    st.markdown("- Risk-return metrics")
+    st.markdown("- Correlation heatmaps")
+    if st.button("🔍 Launch Portfolio Analysis", use_container_width=True, type="primary"):
+        st.switch_page("pages/portfolio_analysis.py")
+
+# Portfolio Comparison section  
+with st.sidebar.expander("🔄 Portfolio Comparison", expanded=False):
+    st.markdown("**Compare Two Portfolios:**")
+    st.markdown("- Side-by-side performance charts")
+    st.markdown("- Risk-adjusted return analysis")
+    st.markdown("- Winner determination")
+    st.markdown("- Investment recommendations")
+    if st.button("⚖️ Launch Portfolio Comparison", use_container_width=True, type="primary"):
+        st.switch_page("pages/portfolio_comparison.py")
+
+# Add help section
+with st.sidebar.expander("❓ Help & Navigation"):
+    st.markdown("""
+    **📊 Trading Strategy Dashboard:**
+    - Chart Analysis: Visual price & indicator analysis
+    - Trade Statistics: Performance metrics & win rates
+    - Detailed Trades: Complete trade history
+    - Compare Methods: Side-by-side strategy comparison
+    
+    **💼 Portfolio Tools (Separate Dashboards):**
+    - Portfolio Analysis: Individual portfolio analysis
+    - Portfolio Comparison: Compare two portfolios
+    
+    **Popular Tickers:**
+    - Tech: AAPL, MSFT, GOOGL, NVDA
+    - Finance: JPM, BAC, V, MA
+    - Healthcare: JNJ, UNH, PFE
+    """)
 
 # Load data for selected ticker/period
 price_data = load_data(ticker=ticker, period=period, interval=interval)
@@ -537,967 +655,872 @@ if not price_data.empty:
         for d in sample_dates:
             st.sidebar.write(str(d))
 
-if choice == "Chart":
-    st.title(f"{method}: Price Chart")
+# Initialize session state for portfolio features
+if 'show_portfolio_analysis' not in st.session_state:
+    st.session_state.show_portfolio_analysis = False
+if 'show_portfolio_comparison' not in st.session_state:
+    st.session_state.show_portfolio_comparison = False
+
+# Portfolio features are now in separate dashboards
+# Portfolio Analysis: portfolio_analysis.py
+# Portfolio Comparison: portfolio_comparison.py
+
+# Legacy portfolio display (kept for reference, but main features moved to dedicated dashboards)
+if st.session_state.get('show_portfolio_analysis', False):
+    st.markdown("### 💼 Portfolio Analysis")
+    st.markdown("Analyze performance of multiple stocks in your portfolio (up to 20 stocks)")
+    
+    # Portfolio input section
+    st.markdown("#### 📊 Portfolio Configuration")
+    
+    # Initialize session state for portfolio management
+    if 'portfolio_stocks' not in st.session_state:
+        st.session_state.portfolio_stocks = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA']
+    
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        # Portfolio templates
+        templates = get_portfolio_template_stocks()
+        template_names = list(templates.keys())
+        selected_template = st.selectbox(
+            "🎯 Choose a Portfolio Template",
+            ["Custom Portfolio"] + template_names,
+            help="Select a predefined portfolio or build your custom portfolio",
+            key="portfolio_template_main"
+        )
+        
+        if selected_template != "Custom Portfolio":
+            if st.button(f"📋 Load {selected_template}", type="secondary", key="load_template_main"):
+                st.session_state.portfolio_stocks = templates[selected_template][:20]  # Limit to 20 stocks
+                st.rerun()
+            st.info(f"**{selected_template}**: {len(templates[selected_template])} stocks")
+    
+    with col2:
+        portfolio_period = st.selectbox("📅 Analysis Period", ["1mo", "3mo", "6mo", "1y", "2y"], index=3, key="portfolio_period_main")
+    
+    with col3:
+        if st.button("🚀 Go to Portfolio Dashboard", type="primary"):
+            st.switch_page("pages/portfolio_analysis.py")
+        if st.button("❌ Close", type="secondary"):
+            st.session_state.show_portfolio_analysis = False
+            st.rerun()
+    
+    st.markdown("---")
+    
+    # Custom portfolio input
+    if selected_template == "Custom Portfolio":
+        st.markdown("#### ✏️ Custom Portfolio Input")
+        
+        # Two methods: text input or search interface
+        input_method = st.radio(
+            "Input Method",
+            ["� Manual Input", "🔍 Search & Add"],
+            horizontal=True,
+            key="portfolio_input_method"
+        )
+        
+        if input_method == "📝 Manual Input":
+            portfolio_input = st.text_area(
+                "Enter Stock Tickers (comma-separated)",
+                value=", ".join(st.session_state.portfolio_stocks),
+                height=100,
+                help="Enter up to 20 stock tickers separated by commas. Example: AAPL, MSFT, GOOGL, AMZN",
+                key="portfolio_manual_input"
+            )
+            
+            if st.button("📋 Update Portfolio", type="primary", key="update_manual_portfolio"):
+                new_tickers = [ticker.strip().upper() for ticker in portfolio_input.split(",") if ticker.strip()]
+                if len(new_tickers) > 20:
+                    st.warning("⚠️ Portfolio limited to 20 stocks. Taking first 20.")
+                    new_tickers = new_tickers[:20]
+                st.session_state.portfolio_stocks = new_tickers
+                st.success(f"✅ Portfolio updated with {len(new_tickers)} stocks")
+                st.rerun()
+        
+        else:  # Search & Add method
+            col_search, col_add = st.columns([2, 1])
+            with col_search:
+                search_query = st.text_input(
+                    "🔍 Search for stocks",
+                    placeholder="Search by ticker or company name (e.g., Apple, AAPL)",
+                    key="portfolio_search_query"
+                )
+            
+            with col_add:
+                st.markdown("<br>", unsafe_allow_html=True)  # Spacing
+                if st.button("🔍 Search", key="portfolio_search_button"):
+                    if search_query:
+                        search_results = search_stocks_by_name_or_ticker(search_query, max_results=10)
+                        if search_results:
+                            st.session_state.search_results = search_results
+                        else:
+                            st.warning("No stocks found matching your search.")
+            
+            # Display search results
+            if hasattr(st.session_state, 'search_results') and st.session_state.search_results:
+                st.markdown("**Search Results:**")
+                for i, result in enumerate(st.session_state.search_results):
+                    col_info, col_action = st.columns([3, 1])
+                    with col_info:
+                        st.write(f"**{result['ticker']}** - {result['name']}")
+                    with col_action:
+                        if st.button(f"➕ Add", key=f"add_stock_{i}"):
+                            if result['ticker'] not in st.session_state.portfolio_stocks:
+                                if len(st.session_state.portfolio_stocks) < 20:
+                                    st.session_state.portfolio_stocks.append(result['ticker'])
+                                    st.success(f"✅ Added {result['ticker']} to portfolio")
+                                    st.rerun()
+                                else:
+                                    st.warning("⚠️ Portfolio is full (20 stocks maximum)")
+                            else:
+                                st.info(f"ℹ️ {result['ticker']} already in portfolio")
+    
+    # Current portfolio display
+    if st.session_state.portfolio_stocks:
+        st.markdown("#### 📊 Current Portfolio")
+        portfolio_display = ", ".join(st.session_state.portfolio_stocks)
+        st.info(f"**Stocks ({len(st.session_state.portfolio_stocks)})**: {portfolio_display}")
+        
+        # Remove stocks option
+        if len(st.session_state.portfolio_stocks) > 0:
+            col_remove1, col_remove2 = st.columns([2, 1])
+            with col_remove1:
+                stock_to_remove = st.selectbox(
+                    "Remove a stock",
+                    ["Select to remove..."] + st.session_state.portfolio_stocks,
+                    key="stock_to_remove"
+                )
+            with col_remove2:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("🗑️ Remove", key="remove_stock_button"):
+                    if stock_to_remove != "Select to remove...":
+                        st.session_state.portfolio_stocks.remove(stock_to_remove)
+                        st.success(f"✅ Removed {stock_to_remove} from portfolio")
+                        st.rerun()
+        
+        # Analysis button
+        if st.button("🚀 Run Portfolio Analysis", type="primary", use_container_width=True, key="run_portfolio_analysis"):
+            with st.spinner("📊 Analyzing portfolio performance..."):
+                # Get portfolio data
+                portfolio_data = get_portfolio_data(st.session_state.portfolio_stocks, period=portfolio_period)
+                
+                if portfolio_data:
+                    # Calculate metrics
+                    individual_metrics, portfolio_returns = calculate_portfolio_metrics(portfolio_data)
+                    correlation_matrix = calculate_portfolio_correlation(portfolio_returns)
+                    portfolio_summary = calculate_equal_weight_portfolio(portfolio_returns)
+                    
+                    st.markdown("---")
+                    st.markdown("### 📈 Portfolio Analysis Results")
+                    
+                    # Portfolio summary metrics
+                    if portfolio_summary:
+                        st.markdown("#### 🎯 Equal-Weighted Portfolio Summary")
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            total_return = portfolio_summary['Total Return (%)']
+                            st.metric("Total Return", f"{total_return:.2f}%", 
+                                    delta="Positive" if total_return > 0 else "Negative")
+                        with col2:
+                            volatility = portfolio_summary['Volatility (%)']
+                            st.metric("Volatility", f"{volatility:.2f}%")
+                        with col3:
+                            sharpe = portfolio_summary['Sharpe Ratio']
+                            st.metric("Sharpe Ratio", f"{sharpe:.3f}",
+                                    delta="Good" if sharpe > 1 else "Fair" if sharpe > 0.5 else "Poor")
+                        with col4:
+                            max_dd = portfolio_summary['Max Drawdown (%)']
+                            st.metric("Max Drawdown", f"{max_dd:.2f}%")
+                    
+                    # Performance chart
+                    st.markdown("#### 📊 Portfolio Performance Chart")
+                    perf_fig = plot_portfolio_performance(portfolio_data)
+                    st.pyplot(perf_fig, use_container_width=True)
+                    
+                    # Individual stock metrics
+                    st.markdown("#### 📋 Individual Stock Performance")
+                    if individual_metrics:
+                        metrics_df = pd.DataFrame(individual_metrics).T
+                        st.dataframe(metrics_df, use_container_width=True)
+                    
+                    # Correlation analysis
+                    if not correlation_matrix.empty and len(correlation_matrix) > 1:
+                        st.markdown("#### 🔗 Portfolio Correlation Analysis")
+                        corr_fig = plot_correlation_heatmap(correlation_matrix)
+                        st.pyplot(corr_fig, use_container_width=True)
+                        
+                        # Correlation insights
+                        avg_correlation = correlation_matrix.values[correlation_matrix.values != 1.0].mean()
+                        st.info(f"📊 **Average Portfolio Correlation**: {avg_correlation:.3f}")
+                        
+                        if avg_correlation > 0.7:
+                            st.warning("⚠️ **High Correlation**: Your portfolio stocks are highly correlated. Consider diversifying across different sectors.")
+                        elif avg_correlation > 0.4:
+                            st.info("ℹ️ **Moderate Correlation**: Reasonable diversification, but room for improvement.")
+                        else:
+                            st.success("✅ **Low Correlation**: Well-diversified portfolio!")
+                    
+                    # Download options
+                    st.markdown("#### 💾 Export Data")
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        if individual_metrics:
+                            metrics_csv = pd.DataFrame(individual_metrics).T.to_csv()
+                            st.download_button(
+                                "📥 Download Metrics",
+                                data=metrics_csv,
+                                file_name=f"portfolio_metrics_{datetime.now().strftime('%Y%m%d')}.csv",
+                                mime="text/csv"
+                            )
+                    
+                    with col2:
+                        if not correlation_matrix.empty:
+                            corr_csv = correlation_matrix.to_csv()
+                            st.download_button(
+                                "📥 Download Correlations",
+                                data=corr_csv,
+                                file_name=f"portfolio_correlations_{datetime.now().strftime('%Y%m%d')}.csv",
+                                mime="text/csv"
+                            )
+                else:
+                    st.error("❌ Unable to fetch data for the selected stocks. Please check the ticker symbols and try again.")
+    else:
+        st.warning("⚠️ Please add some stocks to your portfolio to run analysis.")
+
+# Legacy portfolio comparison display (main features moved to portfolio_comparison.py)
+if st.session_state.get('show_portfolio_comparison', False):
+    st.markdown("### 🔄 Portfolio Comparison")
+    st.markdown("Compare performance between two different portfolios")
+    
+    # Initialize comparison portfolios in session state
+    if 'comparison_portfolio1' not in st.session_state:
+        st.session_state.comparison_portfolio1 = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA']
+    if 'comparison_portfolio2' not in st.session_state:
+        st.session_state.comparison_portfolio2 = ['JPM', 'BAC', 'V', 'MA', 'WFC']
+    
+    col1, col2, col3 = st.columns([1, 1, 1])
+    
+    # Portfolio 1 Configuration
+    with col1:
+        st.markdown("#### 🔵 Portfolio 1")
+        templates = get_portfolio_template_stocks()
+        template_names = list(templates.keys())
+        
+        template1 = st.selectbox("Template 1", ["Custom"] + template_names, key="template1_main")
+        if template1 != "Custom":
+            portfolio1_tickers = templates[template1][:15]  # Limit for comparison
+            st.info(f"**{template1}**: {len(portfolio1_tickers)} stocks")
+            if st.button("📋 Load Portfolio 1", key="load_p1", type="secondary"):
+                st.session_state.comparison_portfolio1 = portfolio1_tickers
+                st.success("✅ Portfolio 1 loaded")
+                st.rerun()
+        else:
+            portfolio1_input = st.text_area(
+                "Portfolio 1 Tickers",
+                value=", ".join(st.session_state.comparison_portfolio1),
+                height=120,
+                key="portfolio1_input_main"
+            )
+            if st.button("📋 Update Portfolio 1", key="update_p1", type="secondary"):
+                new_tickers = [ticker.strip().upper() for ticker in portfolio1_input.split(",") if ticker.strip()]
+                st.session_state.comparison_portfolio1 = new_tickers[:15]
+                st.success(f"✅ Portfolio 1 updated ({len(st.session_state.comparison_portfolio1)} stocks)")
+                st.rerun()
+        
+        # Display current portfolio 1
+        st.markdown("**Current Portfolio 1:**")
+        st.write(", ".join(st.session_state.comparison_portfolio1))
+    
+    # Portfolio 2 Configuration
+    with col2:
+        st.markdown("#### 🔴 Portfolio 2")
+        template2 = st.selectbox("Template 2", ["Custom"] + template_names, key="template2_main", index=1 if len(template_names) > 0 else 0)
+        if template2 != "Custom":
+            portfolio2_tickers = templates[template2][:15]  # Limit for comparison
+            st.info(f"**{template2}**: {len(portfolio2_tickers)} stocks")
+            if st.button("📋 Load Portfolio 2", key="load_p2", type="secondary"):
+                st.session_state.comparison_portfolio2 = portfolio2_tickers
+                st.success("✅ Portfolio 2 loaded")
+                st.rerun()
+        else:
+            portfolio2_input = st.text_area(
+                "Portfolio 2 Tickers",
+                value=", ".join(st.session_state.comparison_portfolio2),
+                height=120,
+                key="portfolio2_input_main"
+            )
+            if st.button("📋 Update Portfolio 2", key="update_p2", type="secondary"):
+                new_tickers = [ticker.strip().upper() for ticker in portfolio2_input.split(",") if ticker.strip()]
+                st.session_state.comparison_portfolio2 = new_tickers[:15]
+                st.success(f"✅ Portfolio 2 updated ({len(st.session_state.comparison_portfolio2)} stocks)")
+                st.rerun()
+        
+        # Display current portfolio 2
+        st.markdown("**Current Portfolio 2:**")
+        st.write(", ".join(st.session_state.comparison_portfolio2))
+    
+    # Controls and Analysis
+    with col3:
+        comparison_period = st.selectbox("Comparison Period", ["3mo", "6mo", "1y", "2y"], index=2, key="comparison_period_main")
+        
+        if st.button("🔄 Run Comparison", type="primary", use_container_width=True):
+            if len(st.session_state.comparison_portfolio1) > 0 and len(st.session_state.comparison_portfolio2) > 0:
+                with st.spinner("📊 Running portfolio comparison analysis..."):
+                    # Get data for both portfolios
+                    portfolio1_data = get_portfolio_data(st.session_state.comparison_portfolio1, period=comparison_period)
+                    portfolio2_data = get_portfolio_data(st.session_state.comparison_portfolio2, period=comparison_period)
+                    
+                    if portfolio1_data and portfolio2_data:
+                        # Calculate metrics for both portfolios
+                        metrics1, returns1 = calculate_portfolio_metrics(portfolio1_data)
+                        metrics2, returns2 = calculate_portfolio_metrics(portfolio2_data)
+                        
+                        portfolio1_summary = calculate_equal_weight_portfolio(returns1)
+                        portfolio2_summary = calculate_equal_weight_portfolio(returns2)
+                        
+                        st.markdown("---")
+                        st.markdown("### 📊 Portfolio Comparison Results")
+                        
+                        # Summary comparison
+                        if portfolio1_summary and portfolio2_summary:
+                            st.markdown("#### 🎯 Performance Summary")
+                            comparison_table = create_comparison_metrics_table(
+                                portfolio1_summary, portfolio2_summary, 
+                                "Portfolio 1 (🔵)", "Portfolio 2 (🔴)"
+                            )
+                            if not comparison_table.empty:
+                                st.dataframe(comparison_table, use_container_width=True, hide_index=True)
+                        
+                        # Side-by-side performance charts
+                        st.markdown("#### 📈 Performance Comparison Charts")
+                        comparison_fig = plot_portfolio_comparison(
+                            portfolio1_data, portfolio2_data,
+                            "Portfolio 1 (🔵)", "Portfolio 2 (🔴)"
+                        )
+                        st.pyplot(comparison_fig, use_container_width=True)
+                        
+                        # Overlay comparison
+                        st.markdown("#### 🔄 Portfolio Overlay Comparison")
+                        overlay_fig = plot_portfolio_overlay_comparison(
+                            returns1, returns2,
+                            "Portfolio 1 (🔵)", "Portfolio 2 (🔴)"
+                        )
+                        st.pyplot(overlay_fig, use_container_width=True)
+                        
+                        # Detailed metrics comparison
+                        st.markdown("#### 📋 Detailed Metrics Comparison")
+                        
+                        col_metrics1, col_metrics2 = st.columns(2)
+                        
+                        with col_metrics1:
+                            st.markdown("##### 🔵 Portfolio 1 Metrics")
+                            if portfolio1_summary:
+                                for key, value in portfolio1_summary.items():
+                                    st.metric(key, f"{value}")
+                            
+                            if metrics1:
+                                st.markdown("**Individual Stock Performance:**")
+                                p1_df = pd.DataFrame(metrics1).T[['Total Return (%)', 'Volatility (%)', 'Sharpe Ratio']]
+                                st.dataframe(p1_df, use_container_width=True)
+                        
+                        with col_metrics2:
+                            st.markdown("##### 🔴 Portfolio 2 Metrics")
+                            if portfolio2_summary:
+                                for key, value in portfolio2_summary.items():
+                                    st.metric(key, f"{value}")
+                            
+                            if metrics2:
+                                st.markdown("**Individual Stock Performance:**")
+                                p2_df = pd.DataFrame(metrics2).T[['Total Return (%)', 'Volatility (%)', 'Sharpe Ratio']]
+                                st.dataframe(p2_df, use_container_width=True)
+                        
+                        # Winner analysis
+                        st.markdown("#### 🏆 Analysis Summary")
+                        if portfolio1_summary and portfolio2_summary:
+                            p1_return = portfolio1_summary['Total Return (%)']
+                            p2_return = portfolio2_summary['Total Return (%)']
+                            p1_sharpe = portfolio1_summary['Sharpe Ratio']
+                            p2_sharpe = portfolio2_summary['Sharpe Ratio']
+                            
+                            col_winner1, col_winner2 = st.columns(2)
+                            with col_winner1:
+                                if p1_return > p2_return:
+                                    st.success(f"🏆 **Portfolio 1** wins on Total Return: {p1_return:.2f}% vs {p2_return:.2f}%")
+                                elif p2_return > p1_return:
+                                    st.success(f"🏆 **Portfolio 2** wins on Total Return: {p2_return:.2f}% vs {p1_return:.2f}%")
+                                else:
+                                    st.info("🤝 **Tie** on Total Return")
+                            
+                            with col_winner2:
+                                if p1_sharpe > p2_sharpe:
+                                    st.success(f"🏆 **Portfolio 1** wins on Risk-Adjusted Return (Sharpe): {p1_sharpe:.3f} vs {p2_sharpe:.3f}")
+                                elif p2_sharpe > p1_sharpe:
+                                    st.success(f"🏆 **Portfolio 2** wins on Risk-Adjusted Return (Sharpe): {p2_sharpe:.3f} vs {p1_sharpe:.3f}")
+                                else:
+                                    st.info("🤝 **Tie** on Risk-Adjusted Return")
+                        
+                        # Export comparison results
+                        st.markdown("#### 💾 Export Comparison Data")
+                        col_export1, col_export2 = st.columns(2)
+                        
+                        with col_export1:
+                            if not comparison_table.empty:
+                                comparison_csv = comparison_table.to_csv(index=False)
+                                st.download_button(
+                                    "📥 Download Comparison Summary",
+                                    data=comparison_csv,
+                                    file_name=f"portfolio_comparison_{datetime.now().strftime('%Y%m%d')}.csv",
+                                    mime="text/csv"
+                                )
+                        
+                        with col_export2:
+                            if metrics1 and metrics2:
+                                combined_metrics = {
+                                    'Portfolio_1': pd.DataFrame(metrics1).T,
+                                    'Portfolio_2': pd.DataFrame(metrics2).T
+                                }
+                                # Create a combined CSV
+                                combined_csv = ""
+                                for name, df in combined_metrics.items():
+                                    combined_csv += f"\n{name}\n"
+                                    combined_csv += df.to_csv()
+                                
+                                st.download_button(
+                                    "📥 Download Detailed Metrics",
+                                    data=combined_csv,
+                                    file_name=f"portfolio_detailed_comparison_{datetime.now().strftime('%Y%m%d')}.csv",
+                                    mime="text/csv"
+                                )
+                    else:
+                        st.error("❌ Unable to fetch data for one or both portfolios. Please check the ticker symbols.")
+            else:
+                st.warning("⚠️ Please ensure both portfolios have stocks before running comparison.")
+        
+        st.info("💡 Portfolio Comparison has been moved to a dedicated dashboard for better functionality!")
+        
+        col_redirect1, col_redirect2 = st.columns(2)
+        with col_redirect1:
+            if st.button("🚀 Go to Portfolio Comparison Dashboard", type="primary", use_container_width=True):
+                st.switch_page("pages/portfolio_comparison.py")
+        with col_redirect2:
+            if st.button("❌ Close", type="secondary", use_container_width=True):
+                st.session_state.show_portfolio_comparison = False
+                st.rerun()
+
+# Tab 1: Chart Analysis
+with selected_tab[0]:
+    # Stock info header
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.subheader(f"📊 {ticker} - {method}")
+    with col2:
+        if not price_data.empty:
+            current_price = price_data['Close'].iloc[-1]
+            st.metric("Current Price", f"${current_price:.2f}")
+    with col3:
+        if not price_data.empty and len(price_data) > 1:
+            price_change = ((price_data['Close'].iloc[-1] / price_data['Close'].iloc[-2]) - 1) * 100
+            st.metric("Daily Change", f"{price_change:.2f}%", delta=f"{price_change:.2f}%")
+    
     if not price_data.empty:
-        # Use the shared plotting helper so Chart and Compare behave identically
+        # Analysis summary cards
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            data_points = len(price_data)
+            st.info(f"📈 **Data Points**: {data_points}")
+        with col2:
+            if len(positions) > 0:
+                total_trades = len(positions)
+                st.info(f"💼 **Total Trades**: {total_trades}")
+            else:
+                st.info("💼 **Total Trades**: 0")
+        with col3:
+            if len(positions) > 0:
+                avg_profit = positions['ProfitPct'].mean()
+                color = "🟢" if avg_profit > 0 else "🔴"
+                st.info(f"{color} **Avg Profit**: {avg_profit:.2f}%")
+            else:
+                st.info("📊 **Avg Profit**: N/A")
+        with col4:
+            period_return = ((price_data['Close'].iloc[-1] / price_data['Close'].iloc[0]) - 1) * 100
+            color = "🟢" if period_return > 0 else "🔴"
+            st.info(f"{color} **Period Return**: {period_return:.2f}%")
+        
+        # Forecast section
         forecast_df = None
         if enable_forecast:
-            # compute forecast (the helper may return a Series or a DataFrame)
-            forecast_series = simple_forecast(price_data, days=int(forecast_days), method=forecast_method, window=int(forecast_window))
-            # normalize to forecast_df (DataFrame with 'Forecast' column)
-            if isinstance(forecast_series, pd.DataFrame):
-                # already a DataFrame (expected with a 'Forecast' column)
-                if 'Forecast' in forecast_series.columns:
-                    forecast_df = forecast_series.copy()
-                    suggestion = generate_suggestion(price_data, forecast_df['Forecast'])
+            with st.spinner("🔮 Generating forecast..."):
+                # compute forecast (the helper may return a Series or a DataFrame)
+                forecast_series = simple_forecast(price_data, days=int(forecast_days), method=forecast_method, window=int(forecast_window))
+                # normalize to forecast_df (DataFrame with 'Forecast' column)
+                if isinstance(forecast_series, pd.DataFrame):
+                    # already a DataFrame (expected with a 'Forecast' column)
+                    if 'Forecast' in forecast_series.columns:
+                        forecast_df = forecast_series.copy()
+                        suggestion = generate_suggestion(price_data, forecast_df['Forecast'])
+                    else:
+                        # if DataFrame but different shape, try to take first column
+                        first_col = forecast_series.columns[0]
+                        forecast_df = forecast_series[[first_col]].rename(columns={first_col: 'Forecast'})
+                        suggestion = generate_suggestion(price_data, forecast_df['Forecast'])
+                elif isinstance(forecast_series, pd.Series):
+                    if not forecast_series.empty:
+                        forecast_df = forecast_series.to_frame(name='Forecast')
+                        suggestion = generate_suggestion(price_data, forecast_series)
                 else:
-                    # if DataFrame but different shape, try to take first column
-                    first_col = forecast_series.columns[0]
-                    forecast_df = forecast_series[[first_col]].rename(columns={first_col: 'Forecast'})
-                    suggestion = generate_suggestion(price_data, forecast_df['Forecast'])
-            elif isinstance(forecast_series, pd.Series):
-                if not forecast_series.empty:
-                    forecast_df = forecast_series.to_frame(name='Forecast')
-                    suggestion = generate_suggestion(price_data, forecast_series)
+                    # unexpected type: ignore
+                    forecast_df = None
+        
+        # Main chart
+        with st.container():
+            fig = plot_price_obv_atr(price_data, positions, method=method, buy_color='red', sell_color='purple', forecast_df=forecast_df)
+            st.pyplot(fig, use_container_width=True)
+        
+        # Show forecast suggestion in an attractive format
+        if enable_forecast and suggestion:
+            st.markdown("### 🔮 AI Prediction")
+            recommendation = suggestion['recommendation']
+            reason = suggestion['reason']
+            
+            if "BUY" in recommendation.upper():
+                st.success(f"🟢 **{recommendation}**: {reason}")
+            elif "SELL" in recommendation.upper():
+                st.error(f"🔴 **{recommendation}**: {reason}")
             else:
-                # unexpected type: ignore
-                forecast_df = None
-        fig = plot_price_obv_atr(price_data, positions, method=method, buy_color='red', sell_color='purple', forecast_df=forecast_df)
-        st.pyplot(fig)
-        # show suggestion if available
-        if suggestion:
-            st.markdown("**Prediction suggestion:**")
-            st.info(f"{suggestion['recommendation']}: {suggestion['reason']}")
+                st.info(f"🟡 **{recommendation}**: {reason}")
+        
+        # Quick statistics table
+        if len(positions) > 0:
+            st.markdown("### 📊 Quick Stats")
+            stats = get_statistics(positions)
+            if stats:
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.dataframe({
+                        "Metric": ["Total Trades", "Win Rate (%)", "Avg Profit (%)"],
+                        "Value": [stats['Total Trades'], f"{stats['Win Rate (%)']:.1f}%", f"{stats['Average Profit (%)']:.2f}%"]
+                    }, hide_index=True, use_container_width=True)
+                with col2:
+                    st.dataframe({
+                        "Metric": ["Winning Trades", "Losing Trades", "Avg Holding Days"],
+                        "Value": [stats['Winning Trades'], stats['Losing Trades'], f"{stats['Average Holding Days']:.1f}"]
+                    }, hide_index=True, use_container_width=True)
     else:
-        st.write("No price data available.")
+        st.error("❌ No price data available. Please check the ticker symbol and try again.")
+        st.info("💡 **Suggestion**: Try popular tickers like AAPL, MSFT, GOOGL, or TSLA")
 
-elif choice == "Trade Statistics":
-    st.title("Trade Statistics Summary")
-    stats = get_statistics(positions)
-    if stats:
-        st.table(pd.DataFrame(stats, index=[0]))
+# Tab 2: Trade Statistics
+with selected_tab[1]:
+    st.markdown("### 📈 Trade Statistics Summary")
+    st.markdown(f"Performance analysis for **{ticker}** using **{method}**")
+    
+    if not price_data.empty:
+        stats = get_statistics(positions)
+        if stats and len(positions) > 0:
+            # Create attractive metric cards
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Total Trades", stats['Total Trades'])
+            with col2:
+                win_rate = stats['Win Rate (%)']
+                st.metric("Win Rate", f"{win_rate:.1f}%", 
+                        delta="Good" if win_rate >= 50 else "Needs Improvement")
+            with col3:
+                avg_profit = stats['Average Profit (%)']
+                st.metric("Avg Profit", f"{avg_profit:.2f}%", 
+                        delta=f"{avg_profit:.2f}%")
+            with col4:
+                avg_holding = stats['Average Holding Days']
+                st.metric("Avg Hold Period", f"{avg_holding:.1f} days")
+            
+            st.markdown("---")
+            
+            # Detailed statistics table
+            st.markdown("#### 📊 Detailed Breakdown")
+            stats_df = pd.DataFrame([stats])
+            st.dataframe(stats_df, use_container_width=True, hide_index=True)
+            
+            # Performance indicators
+            col1, col2 = st.columns(2)
+            with col1:
+                if win_rate >= 60:
+                    st.success("🟢 **Excellent** win rate!")
+                elif win_rate >= 50:
+                    st.info("🟡 **Good** win rate")
+                else:
+                    st.warning("🔴 **Low** win rate - consider strategy adjustment")
+            
+            with col2:
+                if avg_profit > 2:
+                    st.success("🟢 **Strong** average returns!")
+                elif avg_profit > 0:
+                    st.info("🟡 **Positive** returns")
+                else:
+                    st.error("🔴 **Negative** average returns")
+        else:
+            st.info("📊 No trades generated with current settings")
+            st.markdown("""
+            **Possible reasons:**
+            - Strategy conditions not met in the selected time period
+            - Insufficient data for the chosen interval
+            - Try different time periods or strategies
+            """)
     else:
-        st.write("No trades to summarize.")
+        st.error("❌ No data available for analysis")
 
-elif choice == "Detailed Trades":
-    st.title("Detailed Trade Records")
-    if not positions.empty:
-        st.dataframe(positions)
+# Tab 3: Detailed Trades
+with selected_tab[2]:
+    st.markdown("### 📋 Detailed Trade Records")
+    st.markdown(f"Complete trade history for **{ticker}** using **{method}**")
+    
+    if not price_data.empty:
+        if not positions.empty:
+            # Trade summary
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                profitable_trades = len(positions[positions['ProfitPct'] > 0])
+                st.metric("Profitable Trades", profitable_trades)
+            with col2:
+                best_trade = positions['ProfitPct'].max()
+                st.metric("Best Trade", f"{best_trade:.2f}%")
+            with col3:
+                worst_trade = positions['ProfitPct'].min()
+                st.metric("Worst Trade", f"{worst_trade:.2f}%")
+            
+            st.markdown("---")
+            
+            # Interactive trade table
+            st.markdown("#### 💼 Trade Details")
+            
+            # Add filters
+            col1, col2 = st.columns(2)
+            with col1:
+                profit_filter = st.selectbox("Filter by Result", 
+                                            ["All Trades", "Profitable Only", "Loss Only"])
+            with col2:
+                sort_by = st.selectbox("Sort by", 
+                                     ["Date", "Profit %", "Holding Days"])
+            
+            # Apply filters
+            filtered_positions = positions.copy()
+            if profit_filter == "Profitable Only":
+                filtered_positions = filtered_positions[filtered_positions['ProfitPct'] > 0]
+            elif profit_filter == "Loss Only":
+                filtered_positions = filtered_positions[filtered_positions['ProfitPct'] <= 0]
+            
+            # Apply sorting
+            if sort_by == "Date":
+                filtered_positions = filtered_positions.sort_values('BuyDate', ascending=False)
+            elif sort_by == "Profit %":
+                filtered_positions = filtered_positions.sort_values('ProfitPct', ascending=False)
+            elif sort_by == "Holding Days":
+                filtered_positions = filtered_positions.sort_values('HoldingDays', ascending=False)
+            
+            # Display table with styling
+            st.dataframe(
+                filtered_positions,
+                use_container_width=True,
+                column_config={
+                    "ProfitPct": st.column_config.NumberColumn(
+                        "Profit %",
+                        format="%.2f%%"
+                    ),
+                    "BuyPrice": st.column_config.NumberColumn(
+                        "Buy Price",
+                        format="$%.2f"
+                    ),
+                    "SellPrice": st.column_config.NumberColumn(
+                        "Sell Price", 
+                        format="$%.2f"
+                    )
+                }
+            )
+            
+            # Download option
+            csv = filtered_positions.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Trade Data",
+                data=csv,
+                file_name=f"{ticker}_{method.replace(' ', '_')}_trades.csv",
+                mime="text/csv"
+            )
+        else:
+            st.info("📊 No trades to display with current settings")
+            st.markdown("Try adjusting the time period or strategy parameters.")
     else:
-        st.write("No trade records available.")
+        st.error("❌ No data available for analysis")
 
-elif choice == "Compare Methods":
-    st.title("Compare Two Methods")
+# Tab 4: Compare Methods
+with selected_tab[3]:
+    st.markdown("### ⚖️ Strategy Comparison")
+    st.markdown(f"Compare trading strategies for **{ticker}** over **{period}** period")
+    
     if price_data.empty:
-        st.write("No price data available for the selected ticker/period.")
+        st.error("❌ No price data available for the selected ticker/period.")
+        st.info("💡 Please check the ticker symbol and try again.")
     else:
-        # Allow user to pick two methods to compare
-        col_a, col_b = st.columns(2)
+        # Strategy selection with better UI
+        st.markdown("#### 🎯 Select Strategies to Compare")
         methods_list = [
             "Golden Cross (MA50/MA200)",
-            "Bollinger Bands",
+            "Bollinger Bands", 
             "OBV Strategy",
             "ATR Strategy",
         ]
+        
+        col_a, col_b, col_c = st.columns([1, 1, 1])
         with col_a:
-            method1 = st.selectbox("Method 1", options=methods_list, index=0, key='method1')
+            method1 = st.selectbox("🔵 Strategy 1", options=methods_list, index=0, key='method1')
         with col_b:
-            method2 = st.selectbox("Method 2", options=methods_list, index=1, key='method2')
-
-        run_compare = st.button("Run Comparison")
-
-        # Compute both methods for the current selections (reactive). The button remains for UX but
-        # we compute automatically so charts follow sidebar selections.
+            method2 = st.selectbox("🔴 Strategy 2", options=methods_list, index=1, key='method2')
+        with col_c:
+            run_compare = st.button("🔄 Update Comparison", type="primary", use_container_width=True)
+        
+        # Compute both methods
         pos1 = run_selected_method(price_data, method1)
         pos2 = run_selected_method(price_data, method2)
-
-        # Show side-by-side charts
+        
+        # Quick comparison metrics at top
+        col1, col2, col3 = st.columns(3)
+        
+        stats1 = get_statistics(pos1)
+        stats2 = get_statistics(pos2)
+        
+        with col1:
+            if stats1 and stats2:
+                trades1 = stats1.get('Total Trades', 0)
+                trades2 = stats2.get('Total Trades', 0)
+                st.metric("Total Trades", f"{trades1} vs {trades2}", 
+                        delta=f"{trades1 - trades2} difference")
+        
+        with col2:
+            if stats1 and stats2:
+                profit1 = stats1.get('Average Profit (%)', 0)
+                profit2 = stats2.get('Average Profit (%)', 0)
+                winner = method1 if profit1 > profit2 else method2
+                st.metric("Avg Profit %", f"{profit1:.2f}% vs {profit2:.2f}%",
+                        delta=f"Winner: {winner.split('(')[0]}")
+        
+        with col3:
+            if stats1 and stats2:
+                wr1 = stats1.get('Win Rate (%)', 0)
+                wr2 = stats2.get('Win Rate (%)', 0)
+                st.metric("Win Rate", f"{wr1:.1f}% vs {wr2:.1f}%",
+                        delta=f"{wr1 - wr2:.1f}% difference")
+        
+        st.markdown("---")
+        
+        # Side-by-side visualization
+        st.markdown("#### 📊 Visual Comparison")
         left, right = st.columns(2)
+        
         with left:
-            st.header(method1)
-            fig1 = plot_price_obv_atr(price_data, pos1, method=method1, buy_color='red', sell_color='purple')
-            st.pyplot(fig1)
-            stats1 = get_statistics(pos1)
+            st.markdown(f"##### 🔵 {method1}")
+            fig1 = plot_price_obv_atr(price_data, pos1, method=method1, 
+                                    buy_color='blue', sell_color='darkblue')
+            st.pyplot(fig1, use_container_width=True)
+            
             if stats1:
-                st.table(pd.DataFrame(stats1, index=[0]))
+                # Compact stats display
+                st.markdown("**Key Metrics:**")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.info(f"**Trades**: {stats1['Total Trades']}")
+                    st.info(f"**Win Rate**: {stats1['Win Rate (%)']:.1f}%")
+                with col2:
+                    st.info(f"**Avg Profit**: {stats1['Average Profit (%)']:.2f}%")
+                    st.info(f"**Avg Hold**: {stats1['Average Holding Days']:.1f} days")
             else:
-                st.write("No trades for this method.")
-
+                st.warning("No trades generated")
+        
         with right:
-            st.header(method2)
-            fig2 = plot_price_obv_atr(price_data, pos2, method=method2, buy_color='green', sell_color='black')
-            st.pyplot(fig2)
-            stats2 = get_statistics(pos2)
+            st.markdown(f"##### 🔴 {method2}")
+            fig2 = plot_price_obv_atr(price_data, pos2, method=method2, 
+                                    buy_color='red', sell_color='darkred')
+            st.pyplot(fig2, use_container_width=True)
+            
             if stats2:
-                st.table(pd.DataFrame(stats2, index=[0]))
+                # Compact stats display
+                st.markdown("**Key Metrics:**")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.info(f"**Trades**: {stats2['Total Trades']}")
+                    st.info(f"**Win Rate**: {stats2['Win Rate (%)']:.1f}%")
+                with col2:
+                    st.info(f"**Avg Profit**: {stats2['Average Profit (%)']:.2f}%")
+                    st.info(f"**Avg Hold**: {stats2['Average Holding Days']:.1f} days")
             else:
-                st.write("No trades for this method.")
-
-        # Combined summary
-        st.subheader("Combined Comparison")
-        df_compare = pd.DataFrame({
-            'Metric': list((stats1 or {}).keys()) if (stats1 or {}) else [],
-        })
-        # Build a comparison table for common metrics
+                st.warning("No trades generated")
+        
+        # Detailed comparison table
         if stats1 or stats2:
-            all_metrics = set()
-            if stats1:
-                all_metrics.update(stats1.keys())
-            if stats2:
-                all_metrics.update(stats2.keys())
-            rows = []
-            for k in sorted(all_metrics):
-                rows.append({
-                    'Metric': k,
-                    'Method 1': (stats1.get(k) if stats1 else None),
-                    'Method 2': (stats2.get(k) if stats2 else None),
-                })
-            st.table(pd.DataFrame(rows))
-
-elif choice == "Portfolio Analysis":
-    st.title("Portfolio Analysis (Max 20 Stocks)")
-    
-    # Portfolio input section
-    st.subheader("Portfolio Configuration")
-    
-    # Popular stock suggestions organized by sectors
-    stock_suggestions = {
-        "Technology": ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "NFLX", "CRM", "ORCL", "ADBE", "INTC"],
-        "Healthcare": ["JNJ", "UNH", "PFE", "ABBV", "TMO", "ABT", "LLY", "DHR", "BMY", "MRK"],
-        "Finance": ["JPM", "BAC", "WFC", "GS", "MS", "C", "AXP", "BLK", "SPGI", "V", "MA"],
-        "Consumer": ["PG", "KO", "PEP", "WMT", "HD", "MCD", "NKE", "SBUX", "TGT", "COST"],
-        "Energy": ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "BKR"],
-        "Industrial": ["BA", "CAT", "GE", "MMM", "HON", "UPS", "RTX", "LMT", "DE", "FDX"]
-    }
-    
-    # Initialize session state for selected stocks
-    if 'selected_stocks' not in st.session_state:
-        st.session_state.selected_stocks = []
-    
-    # Stock selection method
-    selection_method = st.radio(
-        "How would you like to select stocks?",
-        ["Browse by Sector", "Search & Add Individual Stocks", "Use Template Portfolio", "Manual Input"],
-        horizontal=True
-    )
-    
-    if selection_method == "Browse by Sector":
-        st.write("**Select stocks by browsing different sectors:**")
-        
-        # Create expandable sections for each sector
-        for sector, stocks in stock_suggestions.items():
-            with st.expander(f"📈 {sector} Sector", expanded=False):
-                selected_from_sector = st.multiselect(
-                    f"Select {sector} stocks:",
-                    options=stocks,
-                    key=f"sector_{sector}"
-                )
-                if selected_from_sector:
-                    for stock in selected_from_sector:
-                        if stock not in st.session_state.selected_stocks and len(st.session_state.selected_stocks) < 20:
-                            st.session_state.selected_stocks.append(stock)
-    
-    elif selection_method == "Search & Add Individual Stocks":
-        st.write("**Search and add individual stocks (supports ALL US stocks):**")
-        
-        # Enhanced search functionality for any US stock
-        search_term = st.text_input(
-            "🔍 Search ANY US stock by ticker or company name:", 
-            placeholder="e.g., AAPL, Apple, Microsoft, Tesla, AMD, etc.",
-            help="Search by ticker symbol (AAPL) or company name (Apple). Supports all US-listed stocks!"
-        )
-        
-        if search_term and len(search_term) >= 2:
-            with st.spinner("Searching stocks..."):
-                search_results = search_stocks_by_name_or_ticker(search_term, max_results=15)
+            st.markdown("#### 📈 Detailed Comparison")
+            
+            if stats1 and stats2:
+                # Create comparison DataFrame
+                comparison_data = []
+                all_metrics = set(stats1.keys()) | set(stats2.keys())
                 
-                if search_results:
-                    st.write(f"Found {len(search_results)} matches:")
-                    for i in range(0, len(search_results), 3):  # Display in rows of 3 for better readability
-                        cols = st.columns(3)
-                        for j, result in enumerate(search_results[i:i+3]):
-                            if j < len(cols):
-                                ticker = result['ticker']
-                                name = result['name']
-                                # Truncate long company names
-                                display_name = name[:30] + "..." if len(name) > 30 else name
-                                
-                                if cols[j].button(f"➕ {ticker}\n{display_name}", key=f"search_add_{ticker}_{i}_{j}"):
-                                    if ticker not in st.session_state.selected_stocks and len(st.session_state.selected_stocks) < 20:
-                                        st.session_state.selected_stocks.append(ticker)
-                                        st.success(f"Added {ticker} ({name}) to portfolio!")
-                                    elif len(st.session_state.selected_stocks) >= 20:
-                                        st.warning("Maximum 20 stocks allowed!")
-                                    else:
-                                        st.info(f"{ticker} is already in your portfolio!")
-                else:
-                    st.info("No matches found. Try a different search term or enter the exact ticker symbol.")
-        
-        # Direct ticker entry
-        st.markdown("---")
-        st.write("**Or enter ticker symbol directly:**")
-        
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            direct_ticker = st.text_input(
-                "Enter ticker symbol:", 
-                placeholder="e.g., AAPL, MSFT, TSLA",
-                key="direct_ticker_input"
-            )
-        
-        with col2:
-            if st.button("🔍 Validate & Add", key="validate_add"):
-                if direct_ticker:
-                    ticker = direct_ticker.upper().strip()
-                    if ticker not in st.session_state.selected_stocks:
-                        if len(st.session_state.selected_stocks) < 20:
-                            with st.spinner(f"Validating {ticker}..."):
-                                is_valid, company_name = validate_ticker_symbol(ticker)
-                                if is_valid:
-                                    st.session_state.selected_stocks.append(ticker)
-                                    st.success(f"Added {ticker} ({company_name}) to portfolio!")
-                                else:
-                                    st.error(f"'{ticker}' is not a valid US stock ticker symbol. Please check the symbol and try again.")
+                for metric in sorted(all_metrics):
+                    val1 = stats1.get(metric, 0)
+                    val2 = stats2.get(metric, 0)
+                    
+                    # Determine better performance
+                    if isinstance(val1, (int, float)) and isinstance(val2, (int, float)):
+                        if metric in ['Win Rate (%)', 'Average Profit (%)', 'Average Win (%)']:
+                            better = "🔵 Method 1" if val1 > val2 else "🔴 Method 2" if val2 > val1 else "🟡 Tie"
+                        elif metric in ['Average Loss (%)']:
+                            better = "🔵 Method 1" if val1 > val2 else "🔴 Method 2" if val2 > val1 else "🟡 Tie"  # Less negative is better
                         else:
-                            st.warning("Maximum 20 stocks allowed!")
+                            better = "-"
                     else:
-                        st.info(f"{ticker} is already in your portfolio!")
-        
-        # Popular stocks quick add
-        st.markdown("---")
-        st.write("**Quick Add Popular Stocks:**")
-        popular_stocks = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META", "NFLX"]
-        cols = st.columns(4)
-        for i, stock in enumerate(popular_stocks):
-            if cols[i % 4].button(f"➕ {stock}", key=f"popular_{stock}"):
-                if stock not in st.session_state.selected_stocks and len(st.session_state.selected_stocks) < 20:
-                    st.session_state.selected_stocks.append(stock)
-                    st.success(f"Added {stock} to portfolio!")
-                elif stock in st.session_state.selected_stocks:
-                    st.info(f"{stock} already in portfolio!")
-        
-        # Information about supported stocks
-        st.info("💡 **Supports ALL US-listed stocks** including NYSE, NASDAQ, and major ETFs. Search by company name or ticker symbol!")
-    
-    elif selection_method == "Use Template Portfolio":
-        st.write("**Choose from pre-built portfolio templates:**")
-        
-        template_portfolios = {
-            "🚀 Tech Giants": ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "NFLX"],
-            "🏛️ Dow Jones Leaders": ["AAPL", "MSFT", "JNJ", "V", "PG", "JPM", "UNH", "HD", "MCD", "DIS"],
-            "📊 S&P 500 Top 10": ["AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "TSLA", "META", "BRK-B", "UNH", "JNJ"],
-            "💰 Dividend Aristocrats": ["JNJ", "PG", "KO", "PEP", "WMT", "MCD", "HD", "V", "MA", "MSFT"],
-            "🌱 ESG Leaders": ["MSFT", "GOOGL", "AAPL", "JNJ", "PG", "UNH", "V", "MA", "NVDA", "ADBE"],
-            "🏦 Financial Sector": ["JPM", "BAC", "WFC", "GS", "MS", "C", "AXP", "BLK", "V", "MA"]
-        }
-        
-        selected_template = st.selectbox("Select a template portfolio:", options=list(template_portfolios.keys()))
-        
-        if st.button(f"📋 Load {selected_template}"):
-            st.session_state.selected_stocks = template_portfolios[selected_template].copy()
-            st.success(f"Loaded {len(st.session_state.selected_stocks)} stocks from {selected_template}!")
-    
-    elif selection_method == "Manual Input":
-        st.write("**Enter stock tickers manually (with validation):**")
-        ticker_input = st.text_area(
-            "Enter stock tickers (comma-separated, max 20):",
-            value=",".join(st.session_state.selected_stocks) if st.session_state.selected_stocks else "AAPL,MSFT,GOOGL,AMZN,TSLA",
-            height=100,
-            help="Enter valid US stock ticker symbols separated by commas. Examples: AAPL,MSFT,GOOGL,AMZN,TSLA,SPY,QQQ"
-        )
-        
-        col1, col2 = st.columns([1, 1])
-        
-        with col1:
-            if st.button("📝 Update Portfolio (with validation)", type="primary"):
-                manual_tickers = [ticker.strip().upper() for ticker in ticker_input.split(',') if ticker.strip()]
-                if len(manual_tickers) > 20:
-                    st.warning("Maximum 20 stocks allowed. Using first 20 tickers.")
-                    manual_tickers = manual_tickers[:20]
+                        better = "-"
+                    
+                    comparison_data.append({
+                        'Metric': metric,
+                        f'{method1}': val1,
+                        f'{method2}': val2,
+                        'Better': better
+                    })
                 
-                if manual_tickers:
-                    with st.spinner("Validating ticker symbols..."):
-                        valid_tickers = []
-                        invalid_tickers = []
-                        
-                        for ticker in manual_tickers:
-                            is_valid, company_name = validate_ticker_symbol(ticker)
-                            if is_valid:
-                                valid_tickers.append(ticker)
-                            else:
-                                invalid_tickers.append(ticker)
-                        
-                        if valid_tickers:
-                            st.session_state.selected_stocks = valid_tickers
-                            st.success(f"✅ Updated portfolio with {len(valid_tickers)} valid stocks: {', '.join(valid_tickers)}")
-                        
-                        if invalid_tickers:
-                            st.error(f"❌ Invalid ticker symbols: {', '.join(invalid_tickers)}")
-                            st.info("Please check the spelling and ensure they are valid US stock symbols.")
-        
-        with col2:
-            if st.button("⚡ Quick Update (no validation)"):
-                manual_tickers = [ticker.strip().upper() for ticker in ticker_input.split(',') if ticker.strip()]
-                if len(manual_tickers) > 20:
-                    st.warning("Maximum 20 stocks allowed. Using first 20 tickers.")
-                    manual_tickers = manual_tickers[:20]
-                st.session_state.selected_stocks = manual_tickers
-                st.success(f"Updated portfolio with {len(manual_tickers)} stocks (no validation performed)!")
-        
-        # Common ticker examples
-        st.markdown("---")
-        st.write("**💡 Common Stock Examples:**")
-        example_categories = {
-            "Mega Cap": "AAPL,MSFT,GOOGL,AMZN,TSLA,META,NVDA,BRK-B",
-            "Finance": "JPM,BAC,WFC,GS,V,MA,PYPL,SQ",
-            "Healthcare": "JNJ,UNH,PFE,MRNA,ABBV,TMO,ABT",
-            "Tech Growth": "NVDA,AMD,CRM,ADBE,NFLX,UBER,SNAP",
-            "ETFs": "SPY,QQQ,VTI,IWM,XLK,XLF,XLV,XLE"
-        }
-        
-        cols = st.columns(len(example_categories))
-        for i, (category, tickers) in enumerate(example_categories.items()):
-            if cols[i].button(f"📋 {category}", key=f"example_{category}"):
-                current_text = ticker_input if ticker_input.strip() else ""
-                new_tickers = tickers
-                updated_text = f"{current_text},{new_tickers}" if current_text else new_tickers
-                st.session_state.manual_input_suggestion = updated_text
-                st.info(f"Added {category} examples to input field!")
-    
-    # Display current portfolio
-    st.markdown("---")
-    st.subheader("📊 Current Portfolio")
-    
-    if st.session_state.selected_stocks:
-        # Display selected stocks in a nice format
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            st.write(f"**Selected Stocks ({len(st.session_state.selected_stocks)}/20):**")
-            # Display stocks in rows of 5
-            for i in range(0, len(st.session_state.selected_stocks), 5):
-                cols = st.columns(5)
-                for j, stock in enumerate(st.session_state.selected_stocks[i:i+5]):
-                    if j < len(cols):
-                        cols[j].write(f"• {stock}")
-        
-        with col2:
-            if st.button("🗑️ Clear All"):
-                st.session_state.selected_stocks = []
-                st.success("Portfolio cleared!")
-        
-        # Individual stock removal
-        if len(st.session_state.selected_stocks) > 0:
-            stock_to_remove = st.selectbox("Remove a stock:", options=["Select..."] + st.session_state.selected_stocks)
-            if stock_to_remove != "Select..." and st.button(f"❌ Remove {stock_to_remove}"):
-                st.session_state.selected_stocks.remove(stock_to_remove)
-                st.success(f"Removed {stock_to_remove} from portfolio!")
-        
-        portfolio_tickers = st.session_state.selected_stocks
-    else:
-        st.info("👆 Please select stocks using one of the methods above.")
-        portfolio_tickers = []
-    
-    # Analysis configuration (only show if stocks are selected)
-    if portfolio_tickers:
-        st.markdown("---")
-        st.subheader("⚙️ Analysis Configuration")
-        
-        # Portfolio period selection
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            portfolio_period = st.selectbox("Analysis Period", options=["3mo", "6mo", "1y", "2y", "5y"], index=2)
-        with col2:
-            portfolio_interval = st.selectbox("Data Interval", options=["1d", "1wk"], index=0)
-        with col3:
-            auto_analyze = st.checkbox("Auto-analyze on changes", value=False, help="Automatically run analysis when portfolio changes")
-        
-        # Analysis buttons
-        col1, col2 = st.columns(2)
-        with col1:
-            run_portfolio = st.button("🚀 Analyze Portfolio", type="primary", use_container_width=True)
-        with col2:
-            if st.button("💾 Save Portfolio", use_container_width=True):
-                st.session_state.saved_portfolio = portfolio_tickers.copy()
-                st.success("Portfolio saved! You can restore it later.")
-        
-        # Show saved portfolio option
-        if 'saved_portfolio' in st.session_state and st.session_state.saved_portfolio:
-            if st.button("📂 Load Saved Portfolio"):
-                st.session_state.selected_stocks = st.session_state.saved_portfolio.copy()
-                st.success("Loaded saved portfolio!")
-                portfolio_tickers = st.session_state.selected_stocks
-    
-    if portfolio_tickers and (run_portfolio or auto_analyze):
-        with st.spinner("Fetching portfolio data..."):
-            # Get portfolio data
-            portfolio_data = get_portfolio_data(portfolio_tickers, period=portfolio_period, interval=portfolio_interval)
-            
-            if portfolio_data:
-                # Calculate metrics
-                metrics, portfolio_returns = calculate_portfolio_metrics(portfolio_data)
-                correlation_matrix = calculate_portfolio_correlation(portfolio_returns)
-                portfolio_metrics = calculate_equal_weight_portfolio(portfolio_returns)
+                df_compare = pd.DataFrame(comparison_data)
+                st.dataframe(df_compare, use_container_width=True, hide_index=True)
                 
-                # Quick portfolio overview at the top
-                if portfolio_metrics:
-                    st.markdown("---")
-                    st.subheader("📈 Portfolio Overview")
+                # Summary recommendation
+                st.markdown("#### 🎯 Recommendation")
+                if stats1 and stats2:
+                    profit1 = stats1.get('Average Profit (%)', 0)
+                    profit2 = stats2.get('Average Profit (%)', 0)
                     
-                    # Key metrics in prominent display
-                    metric_cols = st.columns(4)
-                    with metric_cols[0]:
-                        total_return = portfolio_metrics['Total Return (%)']
-                        delta_color = "normal" if total_return >= 0 else "inverse"
-                        st.metric("Portfolio Return", f"{total_return}%", delta=f"{total_return}%")
-                    
-                    with metric_cols[1]:
-                        volatility = portfolio_metrics['Volatility (%)']
-                        st.metric("Volatility (Risk)", f"{volatility}%")
-                    
-                    with metric_cols[2]:
-                        sharpe = portfolio_metrics['Sharpe Ratio']
-                        st.metric("Sharpe Ratio", f"{sharpe}")
-                    
-                    with metric_cols[3]:
-                        max_dd = portfolio_metrics['Max Drawdown (%)']
-                        st.metric("Max Drawdown", f"{max_dd}%")
-                    
-                    # Risk level indicator
-                    if volatility < 15:
-                        risk_level = "🟢 Low Risk"
-                        risk_color = "success"
-                    elif volatility < 25:
-                        risk_level = "🟡 Medium Risk"
-                        risk_color = "warning"
+                    if profit1 > profit2:
+                        st.success(f"🏆 **{method1}** shows better performance with {profit1:.2f}% average profit vs {profit2:.2f}%")
+                    elif profit2 > profit1:
+                        st.success(f"🏆 **{method2}** shows better performance with {profit2:.2f}% average profit vs {profit1:.2f}%")
                     else:
-                        risk_level = "🔴 High Risk"
-                        risk_color = "error"
-                    
-                    st.markdown(f"**Risk Assessment:** :{risk_color}[{risk_level}]")
-                
-                # Display results in tabs
-                tab1, tab2, tab3, tab4 = st.tabs(["📊 Performance Chart", "📋 Individual Metrics", "🔗 Correlation Analysis", "💼 Portfolio Summary"])
-                
-                with tab1:
-                    st.subheader("Normalized Performance Comparison")
-                    if portfolio_data:
-                        fig_perf = plot_portfolio_performance(portfolio_data)
-                        st.pyplot(fig_perf)
-                        
-                        # Performance summary table
-                        st.subheader("Performance Summary")
-                        summary_data = []
-                        for ticker, metric in metrics.items():
-                            summary_data.append({
-                                'Ticker': ticker,
-                                'Total Return (%)': metric['Total Return (%)'],
-                                'Current Price': metric['Current Price'],
-                                'Volatility (%)': metric['Volatility (%)'],
-                                'Sharpe Ratio': metric['Sharpe Ratio']
-                            })
-                        st.dataframe(pd.DataFrame(summary_data))
-                
-                with tab2:
-                    st.subheader("Individual Stock Metrics")
-                    if metrics:
-                        # Convert to DataFrame for better display
-                        metrics_df = pd.DataFrame(metrics).T
-                        st.dataframe(metrics_df.style.format({
-                            'Total Return (%)': '{:.2f}%',
-                            'Volatility (%)': '{:.2f}%',
-                            'Sharpe Ratio': '{:.3f}',
-                            'Max Drawdown (%)': '{:.2f}%',
-                            'Current Price': '${:.2f}',
-                            'Start Price': '${:.2f}'
-                        }))
-                        
-                        # Best and worst performers
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            best_performer = metrics_df['Total Return (%)'].idxmax()
-                            best_return = metrics_df.loc[best_performer, 'Total Return (%)']
-                            st.success(f"**Best Performer**: {best_performer} ({best_return:.2f}%)")
-                        
-                        with col2:
-                            worst_performer = metrics_df['Total Return (%)'].idxmin()
-                            worst_return = metrics_df.loc[worst_performer, 'Total Return (%)']
-                            st.error(f"**Worst Performer**: {worst_performer} ({worst_return:.2f}%)")
-                
-                with tab3:
-                    st.subheader("Correlation Analysis")
-                    if not correlation_matrix.empty:
-                        fig_corr = plot_correlation_heatmap(correlation_matrix)
-                        st.pyplot(fig_corr)
-                        
-                        st.write("**Interpretation:**")
-                        st.write("- Values close to 1.0 indicate strong positive correlation")
-                        st.write("- Values close to -1.0 indicate strong negative correlation") 
-                        st.write("- Values close to 0.0 indicate little to no correlation")
-                        
-                        # Show highest and lowest correlations
-                        if len(correlation_matrix) > 1:
-                            # Get upper triangle of correlation matrix (excluding diagonal)
-                            mask = np.triu(np.ones_like(correlation_matrix), k=1).astype(bool)
-                            corr_pairs = correlation_matrix.where(mask).stack().reset_index()
-                            corr_pairs.columns = ['Stock1', 'Stock2', 'Correlation']
-                            
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                highest_corr = corr_pairs.loc[corr_pairs['Correlation'].idxmax()]
-                                st.info(f"**Highest Correlation**: {highest_corr['Stock1']} & {highest_corr['Stock2']} ({highest_corr['Correlation']:.3f})")
-                            
-                            with col2:
-                                lowest_corr = corr_pairs.loc[corr_pairs['Correlation'].idxmin()]
-                                st.info(f"**Lowest Correlation**: {lowest_corr['Stock1']} & {lowest_corr['Stock2']} ({lowest_corr['Correlation']:.3f})")
-                
-                with tab4:
-                    st.subheader("Equal-Weighted Portfolio Performance")
-                    if portfolio_metrics:
-                        col1, col2, col3, col4 = st.columns(4)
-                        with col1:
-                            st.metric("Total Return", f"{portfolio_metrics['Total Return (%)']}%")
-                        with col2:
-                            st.metric("Volatility", f"{portfolio_metrics['Volatility (%)']}%")
-                        with col3:
-                            st.metric("Sharpe Ratio", f"{portfolio_metrics['Sharpe Ratio']}")
-                        with col4:
-                            st.metric("Max Drawdown", f"{portfolio_metrics['Max Drawdown (%)']}%")
-                        
-                        # Portfolio composition
-                        st.subheader("Portfolio Composition")
-                        if len(portfolio_tickers) > 0:
-                            weight_per_stock = 100 / len(portfolio_tickers)
-                            composition_data = []
-                            for ticker in portfolio_tickers:
-                                if ticker in metrics:
-                                    composition_data.append({
-                                        'Ticker': ticker,
-                                        'Weight (%)': round(weight_per_stock, 2),
-                                        'Current Price': metrics[ticker]['Current Price'],
-                                        'Total Return (%)': metrics[ticker]['Total Return (%)']
-                                    })
-                            
-                            if composition_data:
-                                st.dataframe(pd.DataFrame(composition_data))
-                        
-                        # Risk analysis
-                        st.subheader("Risk Analysis")
-                        if len(metrics) > 1:
-                            volatilities = [metric['Volatility (%)'] for metric in metrics.values()]
-                            avg_volatility = np.mean(volatilities)
-                            
-                            st.write(f"**Average Individual Volatility**: {avg_volatility:.2f}%")
-                            st.write(f"**Portfolio Volatility**: {portfolio_metrics['Volatility (%)']}%")
-                            
-                            diversification_benefit = avg_volatility - portfolio_metrics['Volatility (%)']
-                            if diversification_benefit > 0:
-                                st.success(f"**Diversification Benefit**: {diversification_benefit:.2f}% reduction in volatility")
-                            else:
-                                st.warning("Portfolio shows limited diversification benefit")
+                        st.info("🤝 Both strategies show similar performance")
             else:
-                st.error("No valid portfolio data could be retrieved. Please check ticker symbols and try again.")
-    
-    # Help and tips section
-    if not portfolio_tickers:
-        st.markdown("---")
-        with st.expander("💡 Portfolio Analysis Tips & Help", expanded=True):
-            st.markdown("""
-            ### How to Use Portfolio Analysis:
-            
-            **1. Select Stocks (ALL US STOCKS SUPPORTED):**
-            - **Browse by Sector**: Explore popular stocks organized by industry sectors
-            - **Search & Add**: Search ANY US stock by ticker or company name
-            - **Use Templates**: Choose from pre-built portfolio templates
-            - **Manual Input**: Type ticker symbols directly (with validation)
-            
-            **🌟 Stock Coverage:**
-            - ✅ **NYSE**: All New York Stock Exchange listed companies
-            - ✅ **NASDAQ**: All NASDAQ listed companies  
-            - ✅ **ETFs**: Exchange-traded funds (SPY, QQQ, VTI, etc.)
-            - ✅ **Small Cap**: Russell 2000 and smaller companies
-            - ✅ **Large Cap**: S&P 500 and Fortune 500 companies
-            - ✅ **Sectors**: Technology, Healthcare, Finance, Energy, Consumer, Industrial, etc.
-            
-            **2. Key Metrics Explained:**
-            - **Total Return**: Overall percentage gain/loss over the selected period
-            - **Volatility**: Measure of price fluctuation (higher = more risky)
-            - **Sharpe Ratio**: Risk-adjusted return (higher = better risk/reward)
-            - **Max Drawdown**: Largest peak-to-trough decline (lower = better)
-            - **Correlation**: How stocks move relative to each other (-1 to +1)
-            
-            **3. Portfolio Benefits:**
-            - **Diversification**: Spreading risk across different stocks/sectors
-            - **Risk Reduction**: Lower portfolio volatility than individual stocks
-            - **Performance Comparison**: See which stocks are outperforming
-            
-            **4. Tips for Better Portfolios:**
-            - Mix stocks from different sectors and market caps
-            - Look for low correlations between stocks
-            - Balance high-growth and stable dividend stocks
-            - Include both individual stocks and ETFs
-            - Consider international exposure via ADRs
-            
-            **🔍 Search Examples:**
-            - By Ticker: AAPL, MSFT, TSLA, AMD, ROKU
-            - By Company: Apple, Microsoft, Tesla, Netflix
-            - ETFs: SPY, QQQ, VTI, IWM, XLK, XLF, XLV
-            - Small Caps: Any Russell 2000 component
-            - Crypto-related: COIN, MSTR, RIOT, MARA
-            
-            **Popular Stock Categories:**
-            - 🖥️ **Technology**: AAPL, MSFT, GOOGL, NVDA, TSLA, AMD, CRM
-            - 🏥 **Healthcare**: JNJ, UNH, PFE, ABBV, TMO, GILD, MRNA
-            - 🏦 **Finance**: JPM, BAC, V, MA, GS, BRK-B, PYPL
-            - 🛒 **Consumer**: PG, KO, WMT, HD, MCD, AMZN, DIS
-            - ⚡ **Energy**: XOM, CVX, COP, EOG, SLB, NEE
-            - 🏭 **Industrial**: BA, CAT, GE, UPS, FDX, MMM
-            """)
-            
-            st.info("💡 **Pro Tip**: Start with 5-10 stocks from different sectors, then analyze their correlation to build a well-diversified portfolio!")
+                st.warning("⚠️ One or both strategies generated no trades for comparison")
 
-elif choice == "Portfolio Comparison":
-    st.title("📊 Portfolio Comparison Tool")
-    st.write("Compare the performance of two different portfolios side by side")
-    
-    # Initialize session states for both portfolios
-    if 'portfolio1_stocks' not in st.session_state:
-        st.session_state.portfolio1_stocks = []
-    if 'portfolio2_stocks' not in st.session_state:
-        st.session_state.portfolio2_stocks = []
-    
-    # Portfolio templates
-    template_portfolios = get_portfolio_template_stocks()
-    
-    # Two columns for portfolio configuration
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("🔵 Portfolio 1 Configuration")
-        
-        # Portfolio 1 name
-        portfolio1_name = st.text_input("Portfolio 1 Name:", value="Portfolio A", key="p1_name")
-        
-        # Portfolio 1 selection method
-        p1_method = st.selectbox(
-            "Selection Method for Portfolio 1:",
-            ["Template", "Custom Input", "Load from Current Session"],
-            key="p1_method"
-        )
-        
-        if p1_method == "Template":
-            p1_template = st.selectbox("Choose Portfolio 1 Template:", list(template_portfolios.keys()), key="p1_template")
-            if st.button("📋 Load Template to Portfolio 1", key="load_p1"):
-                st.session_state.portfolio1_stocks = template_portfolios[p1_template].copy()
-                st.success(f"Loaded {len(st.session_state.portfolio1_stocks)} stocks to Portfolio 1!")
-        
-        elif p1_method == "Custom Input":
-            p1_input = st.text_area(
-                "Enter Portfolio 1 tickers (comma-separated):",
-                value=",".join(st.session_state.portfolio1_stocks),
-                height=100,
-                key="p1_input"
-            )
-            if st.button("📝 Update Portfolio 1", key="update_p1"):
-                stocks = [ticker.strip().upper() for ticker in p1_input.split(',') if ticker.strip()]
-                if len(stocks) > 20:
-                    st.warning("Maximum 20 stocks allowed. Using first 20.")
-                    stocks = stocks[:20]
-                st.session_state.portfolio1_stocks = stocks
-                st.success(f"Updated Portfolio 1 with {len(stocks)} stocks!")
-        
-        elif p1_method == "Load from Current Session":
-            if 'selected_stocks' in st.session_state and st.session_state.selected_stocks:
-                if st.button("📂 Load from Portfolio Analysis", key="load_session_p1"):
-                    st.session_state.portfolio1_stocks = st.session_state.selected_stocks.copy()
-                    st.success(f"Loaded {len(st.session_state.portfolio1_stocks)} stocks from current session!")
-            else:
-                st.info("No stocks in current session. Go to Portfolio Analysis first.")
-        
-        # Display Portfolio 1 stocks
-        if st.session_state.portfolio1_stocks:
-            st.write(f"**Portfolio 1 Stocks ({len(st.session_state.portfolio1_stocks)}):**")
-            for i in range(0, len(st.session_state.portfolio1_stocks), 3):
-                cols = st.columns(3)
-                for j, stock in enumerate(st.session_state.portfolio1_stocks[i:i+3]):
-                    if j < len(cols):
-                        cols[j].write(f"• {stock}")
-            
-            if st.button("🗑️ Clear Portfolio 1", key="clear_p1"):
-                st.session_state.portfolio1_stocks = []
-                st.success("Portfolio 1 cleared!")
-    
-    with col2:
-        st.subheader("🔴 Portfolio 2 Configuration")
-        
-        # Portfolio 2 name
-        portfolio2_name = st.text_input("Portfolio 2 Name:", value="Portfolio B", key="p2_name")
-        
-        # Portfolio 2 selection method
-        p2_method = st.selectbox(
-            "Selection Method for Portfolio 2:",
-            ["Template", "Custom Input", "Load from Current Session"],
-            key="p2_method"
-        )
-        
-        if p2_method == "Template":
-            p2_template = st.selectbox("Choose Portfolio 2 Template:", list(template_portfolios.keys()), key="p2_template")
-            if st.button("📋 Load Template to Portfolio 2", key="load_p2"):
-                st.session_state.portfolio2_stocks = template_portfolios[p2_template].copy()
-                st.success(f"Loaded {len(st.session_state.portfolio2_stocks)} stocks to Portfolio 2!")
-        
-        elif p2_method == "Custom Input":
-            p2_input = st.text_area(
-                "Enter Portfolio 2 tickers (comma-separated):",
-                value=",".join(st.session_state.portfolio2_stocks),
-                height=100,
-                key="p2_input"
-            )
-            if st.button("📝 Update Portfolio 2", key="update_p2"):
-                stocks = [ticker.strip().upper() for ticker in p2_input.split(',') if ticker.strip()]
-                if len(stocks) > 20:
-                    st.warning("Maximum 20 stocks allowed. Using first 20.")
-                    stocks = stocks[:20]
-                st.session_state.portfolio2_stocks = stocks
-                st.success(f"Updated Portfolio 2 with {len(stocks)} stocks!")
-        
-        elif p2_method == "Load from Current Session":
-            if 'selected_stocks' in st.session_state and st.session_state.selected_stocks:
-                if st.button("📂 Load from Portfolio Analysis", key="load_session_p2"):
-                    st.session_state.portfolio2_stocks = st.session_state.selected_stocks.copy()
-                    st.success(f"Loaded {len(st.session_state.portfolio2_stocks)} stocks from current session!")
-            else:
-                st.info("No stocks in current session. Go to Portfolio Analysis first.")
-        
-        # Display Portfolio 2 stocks
-        if st.session_state.portfolio2_stocks:
-            st.write(f"**Portfolio 2 Stocks ({len(st.session_state.portfolio2_stocks)}):**")
-            for i in range(0, len(st.session_state.portfolio2_stocks), 3):
-                cols = st.columns(3)
-                for j, stock in enumerate(st.session_state.portfolio2_stocks[i:i+3]):
-                    if j < len(cols):
-                        cols[j].write(f"• {stock}")
-            
-            if st.button("🗑️ Clear Portfolio 2", key="clear_p2"):
-                st.session_state.portfolio2_stocks = []
-                st.success("Portfolio 2 cleared!")
-    
-    # Comparison configuration
-    if st.session_state.portfolio1_stocks and st.session_state.portfolio2_stocks:
-        st.markdown("---")
-        st.subheader("⚙️ Comparison Configuration")
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            comp_period = st.selectbox("Comparison Period", options=["3mo", "6mo", "1y", "2y", "5y"], index=2, key="comp_period")
-        with col2:
-            comp_interval = st.selectbox("Data Interval", options=["1d", "1wk"], index=0, key="comp_interval")
-        with col3:
-            comparison_type = st.selectbox("Comparison Type", options=["Side by Side", "Overlay", "Both"], index=2, key="comp_type")
-        
-        # Run comparison
-        if st.button("🚀 Compare Portfolios", type="primary"):
-            with st.spinner("Fetching data and analyzing portfolios..."):
-                # Get data for both portfolios
-                portfolio1_data = get_portfolio_data(st.session_state.portfolio1_stocks, period=comp_period, interval=comp_interval)
-                portfolio2_data = get_portfolio_data(st.session_state.portfolio2_stocks, period=comp_period, interval=comp_interval)
-                
-                if portfolio1_data and portfolio2_data:
-                    # Calculate metrics for both portfolios
-                    metrics1, returns1 = calculate_portfolio_metrics(portfolio1_data)
-                    metrics2, returns2 = calculate_portfolio_metrics(portfolio2_data)
-                    
-                    portfolio_metrics1 = calculate_equal_weight_portfolio(returns1)
-                    portfolio_metrics2 = calculate_equal_weight_portfolio(returns2)
-                    
-                    # Portfolio overview comparison
-                    st.markdown("---")
-                    st.subheader("📈 Portfolio Comparison Overview")
-                    
-                    # Side-by-side metrics
-                    if portfolio_metrics1 and portfolio_metrics2:
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            st.markdown(f"### 🔵 {portfolio1_name}")
-                            subcol1, subcol2 = st.columns(2)
-                            with subcol1:
-                                total_return1 = portfolio_metrics1['Total Return (%)']
-                                st.metric("Total Return", f"{total_return1}%")
-                                sharpe1 = portfolio_metrics1['Sharpe Ratio']
-                                st.metric("Sharpe Ratio", f"{sharpe1}")
-                            with subcol2:
-                                volatility1 = portfolio_metrics1['Volatility (%)']
-                                st.metric("Volatility", f"{volatility1}%")
-                                max_dd1 = portfolio_metrics1['Max Drawdown (%)']
-                                st.metric("Max Drawdown", f"{max_dd1}%")
-                        
-                        with col2:
-                            st.markdown(f"### 🔴 {portfolio2_name}")
-                            subcol1, subcol2 = st.columns(2)
-                            with subcol1:
-                                total_return2 = portfolio_metrics2['Total Return (%)']
-                                delta_return = total_return2 - total_return1
-                                st.metric("Total Return", f"{total_return2}%", delta=f"{delta_return:.2f}%")
-                                sharpe2 = portfolio_metrics2['Sharpe Ratio']
-                                delta_sharpe = sharpe2 - sharpe1
-                                st.metric("Sharpe Ratio", f"{sharpe2}", delta=f"{delta_sharpe:.3f}")
-                            with subcol2:
-                                volatility2 = portfolio_metrics2['Volatility (%)']
-                                delta_vol = volatility2 - volatility1
-                                st.metric("Volatility", f"{volatility2}%", delta=f"{delta_vol:.2f}%")
-                                max_dd2 = portfolio_metrics2['Max Drawdown (%)']
-                                delta_dd = max_dd2 - max_dd1
-                                st.metric("Max Drawdown", f"{max_dd2}%", delta=f"{delta_dd:.2f}%")
-                        
-                        # Winner analysis
-                        st.markdown("### 🏆 Performance Winner Analysis")
-                        winners = []
-                        if total_return1 > total_return2:
-                            winners.append(f"📈 **Best Total Return**: {portfolio1_name} ({total_return1:.2f}% vs {total_return2:.2f}%)")
-                        else:
-                            winners.append(f"📈 **Best Total Return**: {portfolio2_name} ({total_return2:.2f}% vs {total_return1:.2f}%)")
-                        
-                        if volatility1 < volatility2:
-                            winners.append(f"🛡️ **Lower Risk**: {portfolio1_name} ({volatility1:.2f}% vs {volatility2:.2f}%)")
-                        else:
-                            winners.append(f"🛡️ **Lower Risk**: {portfolio2_name} ({volatility2:.2f}% vs {volatility1:.2f}%)")
-                        
-                        if sharpe1 > sharpe2:
-                            winners.append(f"⚖️ **Better Risk-Adjusted Return**: {portfolio1_name} (Sharpe: {sharpe1:.3f} vs {sharpe2:.3f})")
-                        else:
-                            winners.append(f"⚖️ **Better Risk-Adjusted Return**: {portfolio2_name} (Sharpe: {sharpe2:.3f} vs {sharpe1:.3f})")
-                        
-                        for winner in winners:
-                            st.success(winner)
-                    
-                    # Detailed comparison tabs
-                    tab1, tab2, tab3, tab4 = st.tabs(["📊 Performance Charts", "📋 Detailed Metrics", "📈 Individual Stocks", "🔍 Portfolio Composition"])
-                    
-                    with tab1:
-                        if comparison_type in ["Side by Side", "Both"]:
-                            st.subheader("Side-by-Side Performance Comparison")
-                            fig_side = plot_portfolio_comparison(
-                                portfolio1_data, portfolio2_data, 
-                                portfolio1_name, portfolio2_name
-                            )
-                            st.pyplot(fig_side)
-                        
-                        if comparison_type in ["Overlay", "Both"]:
-                            st.subheader("Portfolio Overlay Comparison")
-                            fig_overlay = plot_portfolio_overlay_comparison(
-                                returns1, returns2, portfolio1_name, portfolio2_name
-                            )
-                            st.pyplot(fig_overlay)
-                    
-                    with tab2:
-                        st.subheader("Detailed Metrics Comparison")
-                        if portfolio_metrics1 and portfolio_metrics2:
-                            comparison_table = create_comparison_metrics_table(
-                                portfolio_metrics1, portfolio_metrics2, 
-                                portfolio1_name, portfolio2_name
-                            )
-                            st.dataframe(comparison_table, use_container_width=True)
-                    
-                    with tab3:
-                        st.subheader("Individual Stock Performance")
-                        
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            st.markdown(f"#### {portfolio1_name} Individual Stocks")
-                            if metrics1:
-                                df1 = pd.DataFrame(metrics1).T[['Total Return (%)', 'Volatility (%)', 'Sharpe Ratio']]
-                                st.dataframe(df1.style.format({
-                                    'Total Return (%)': '{:.2f}%',
-                                    'Volatility (%)': '{:.2f}%',
-                                    'Sharpe Ratio': '{:.3f}'
-                                }))
-                        
-                        with col2:
-                            st.markdown(f"#### {portfolio2_name} Individual Stocks")
-                            if metrics2:
-                                df2 = pd.DataFrame(metrics2).T[['Total Return (%)', 'Volatility (%)', 'Sharpe Ratio']]
-                                st.dataframe(df2.style.format({
-                                    'Total Return (%)': '{:.2f}%',
-                                    'Volatility (%)': '{:.2f}%',
-                                    'Sharpe Ratio': '{:.3f}'
-                                }))
-                    
-                    with tab4:
-                        st.subheader("Portfolio Composition Analysis")
-                        
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            st.markdown(f"#### {portfolio1_name} Composition")
-                            st.write(f"**Number of stocks**: {len(st.session_state.portfolio1_stocks)}")
-                            st.write(f"**Stocks**: {', '.join(st.session_state.portfolio1_stocks)}")
-                            
-                            # Sector analysis (simplified)
-                            tech_stocks1 = [s for s in st.session_state.portfolio1_stocks if s in ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "NFLX"]]
-                            if tech_stocks1:
-                                st.write(f"**Tech exposure**: {len(tech_stocks1)} stocks ({len(tech_stocks1)/len(st.session_state.portfolio1_stocks)*100:.1f}%)")
-                        
-                        with col2:
-                            st.markdown(f"#### {portfolio2_name} Composition")
-                            st.write(f"**Number of stocks**: {len(st.session_state.portfolio2_stocks)}")
-                            st.write(f"**Stocks**: {', '.join(st.session_state.portfolio2_stocks)}")
-                            
-                            # Sector analysis (simplified)
-                            tech_stocks2 = [s for s in st.session_state.portfolio2_stocks if s in ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "NFLX"]]
-                            if tech_stocks2:
-                                st.write(f"**Tech exposure**: {len(tech_stocks2)} stocks ({len(tech_stocks2)/len(st.session_state.portfolio2_stocks)*100:.1f}%)")
-                        
-                        # Common stocks analysis
-                        common_stocks = set(st.session_state.portfolio1_stocks) & set(st.session_state.portfolio2_stocks)
-                        if common_stocks:
-                            st.markdown("#### 🔄 Common Stocks")
-                            st.write(f"**Overlapping stocks**: {', '.join(sorted(common_stocks))}")
-                            overlap_pct = len(common_stocks) / max(len(st.session_state.portfolio1_stocks), len(st.session_state.portfolio2_stocks)) * 100
-                            st.write(f"**Portfolio overlap**: {overlap_pct:.1f}%")
-                        else:
-                            st.info("No common stocks between portfolios - completely different strategies!")
-                
-                else:
-                    st.error("Failed to fetch data for one or both portfolios. Please check ticker symbols.")
-    
-    # Quick comparison templates
-    elif not st.session_state.portfolio1_stocks or not st.session_state.portfolio2_stocks:
-        st.markdown("---")
-        with st.expander("🚀 Quick Start: Popular Portfolio Comparisons", expanded=True):
-            st.markdown("""
-            ### Popular Comparison Ideas:
-            
-            **🔥 Growth vs Value:**
-            - Portfolio 1: Tech Giants (AAPL, MSFT, GOOGL, NVDA, TSLA)
-            - Portfolio 2: Dividend Aristocrats (JNJ, PG, KO, WMT, HD)
-            
-            **🌍 Sector Diversification:**
-            - Portfolio 1: Technology Focus
-            - Portfolio 2: Healthcare Focus
-            
-            **📊 Index Comparison:**
-            - Portfolio 1: S&P 500 Top 10
-            - Portfolio 2: Dow Jones Leaders
-            
-            **🎯 Risk Comparison:**
-            - Portfolio 1: High Growth/High Risk
-            - Portfolio 2: Stable/Low Risk
-            """)
-            
-            # Quick load buttons
-            st.markdown("#### Quick Load Examples:")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if st.button("Load Tech vs Healthcare Example"):
-                    st.session_state.portfolio1_stocks = ["AAPL", "MSFT", "GOOGL", "NVDA", "TSLA", "META", "NFLX"]
-                    st.session_state.portfolio2_stocks = ["JNJ", "UNH", "PFE", "ABBV", "TMO", "ABT", "LLY"]
-                    st.success("Loaded Tech vs Healthcare example!")
-            
-            with col2:
-                if st.button("Load Growth vs Dividend Example"):
-                    st.session_state.portfolio1_stocks = ["TSLA", "NVDA", "META", "NFLX", "AMZN", "GOOGL"]
-                    st.session_state.portfolio2_stocks = ["JNJ", "PG", "KO", "WMT", "HD", "V", "MA"]
-                    st.success("Loaded Growth vs Dividend example!")
+# Footer with user tips
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 💡 Quick Tips")
+st.sidebar.info("""
+**New User?**
+1. Start with Chart tab
+2. Try different tickers (AAPL, MSFT)
+3. Use Portfolio Analysis in sidebar
+4. Compare strategies
+""")
+
+# Footer
+st.markdown("---")
+st.markdown("##### 📈 Trading Strategy Dashboard | Multi-Dashboard Platform")
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.markdown("🎯 **Main Dashboard**: Chart Analysis, Trade Statistics, Strategy Comparison")
+with col2:
+    st.markdown("� **Portfolio Dashboards**: Analysis & Comparison (sidebar buttons)")
+with col3:
+    st.markdown("� **Supports**: All US stocks, ETFs, Multiple strategies, 20+ stock portfolios")
