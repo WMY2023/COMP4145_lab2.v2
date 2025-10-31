@@ -19,6 +19,36 @@ from trading_methods import (
     generate_suggestion,
 )
 
+# Helper: sanitize DataFrames before sending to Streamlit (fix percent-strings, numeric-like strings)
+def sanitize_df_for_streamlit(df: pd.DataFrame) -> pd.DataFrame:
+    """Return a copy of df with object columns sanitized to numeric where possible.
+
+    - strips trailing % and thousands separators
+    - converts numeric-like strings to numbers (coerce where not possible)
+    """
+    if df is None or df.empty:
+        return df
+    df = df.copy()
+    for col in df.columns:
+        try:
+            if df[col].dtype == object:
+                # convert bytes/str to str first
+                s = df[col].astype(str).str.strip()
+                # remove percent signs and commas
+                s = s.str.replace('%', '', regex=False).str.replace(',', '', regex=False)
+                # try numeric conversion
+                conv = pd.to_numeric(s, errors='coerce')
+                # if conversion produced any non-NaN values, use it
+                if conv.notna().any():
+                    df[col] = conv
+                else:
+                    # keep original if cannot convert
+                    df[col] = df[col]
+        except Exception:
+            # if anything goes wrong, leave column as-is
+            continue
+    return df
+
 # Download stock data for a given ticker and period
 def get_stock_data(ticker, period="5y", interval="1d"):
     stock = yf.Ticker(ticker)
@@ -416,8 +446,23 @@ def plot_price_obv_atr(price_data, positions, method=None, buy_color='red', sell
     """
     fig, (ax_price, ax_obv, ax_atr) = plt.subplots(3, 1, figsize=(14, 10), sharex=True, gridspec_kw={"height_ratios": [3, 1, 1]})
 
+    # Ensure numeric types for plotting to avoid matplotlib category/type errors
+    try:
+        for col in ['Close', 'MA50', 'MA200', 'BB_Middle', 'BB_Upper', 'BB_Lower', 'OBV', 'ATR']:
+            if col in price_data.columns:
+                price_data[col] = pd.to_numeric(price_data[col], errors='coerce')
+    except Exception:
+        pass
+
     # Price plot
-    ax_price.plot(price_data.index, price_data['Close'], label='Close Price', color='blue')
+    try:
+        ax_price.plot(price_data.index, price_data['Close'], label='Close Price', color='blue')
+    except Exception:
+        # avoid crashing entire page if plotting fails
+        ax_price.text(0.5, 0.5, 'Price plot unavailable', ha='center', va='center')
+        ax_price.set_ylabel('Price')
+        ax_price.legend(loc='upper left')
+        # continue to try other axes
     # Render overlays conditionally to match Chart page
     if method and method.startswith("Golden Cross"):
         if 'MA50' in price_data:
@@ -433,9 +478,21 @@ def plot_price_obv_atr(price_data, positions, method=None, buy_color='red', sell
             ax_price.plot(price_data.index, price_data['BB_Lower'], label='BB Lower', color='red', linestyle='--')
 
     # Buy/sell on price axis (use same marker style as Chart page)
-    if not positions.empty:
-        ax_price.scatter(positions['BuyDate'], positions['BuyPrice'], color=buy_color, marker='o', label='Buy', zorder=5)
-        ax_price.scatter(positions['SellDate'], positions['SellPrice'], color=sell_color, marker='o', label='Sell', zorder=5)
+    if isinstance(positions, pd.DataFrame) and not positions.empty:
+        try:
+            # ensure datetimes and numeric
+            if 'BuyDate' in positions.columns:
+                positions['BuyDate'] = pd.to_datetime(positions['BuyDate'], errors='coerce')
+            if 'SellDate' in positions.columns:
+                positions['SellDate'] = pd.to_datetime(positions['SellDate'], errors='coerce')
+            if 'BuyPrice' in positions.columns:
+                positions['BuyPrice'] = pd.to_numeric(positions['BuyPrice'], errors='coerce')
+            if 'SellPrice' in positions.columns:
+                positions['SellPrice'] = pd.to_numeric(positions['SellPrice'], errors='coerce')
+            ax_price.scatter(positions['BuyDate'], positions['BuyPrice'], color=buy_color, marker='o', label='Buy', zorder=5)
+            ax_price.scatter(positions['SellDate'], positions['SellPrice'], color=sell_color, marker='o', label='Sell', zorder=5)
+        except Exception:
+            pass
 
     # Forecast overlay
     if forecast_df is not None and not forecast_df.empty:
@@ -450,15 +507,21 @@ def plot_price_obv_atr(price_data, positions, method=None, buy_color='red', sell
 
     # OBV plot
     if 'OBV' in price_data:
-        ax_obv.plot(price_data.index, price_data['OBV'], label='OBV', color='black')
-        ax_obv.set_ylabel('OBV')
+        try:
+            ax_obv.plot(price_data.index, price_data['OBV'], label='OBV', color='black')
+            ax_obv.set_ylabel('OBV')
+        except Exception:
+            ax_obv.text(0.5, 0.5, 'OBV unavailable', ha='center', va='center')
     else:
         ax_obv.text(0.5, 0.5, 'OBV not available', ha='center', va='center')
 
     # ATR plot
     if 'ATR' in price_data:
-        ax_atr.plot(price_data.index, price_data['ATR'], label='ATR', color='brown')
-        ax_atr.set_ylabel('ATR')
+        try:
+            ax_atr.plot(price_data.index, price_data['ATR'], label='ATR', color='brown')
+            ax_atr.set_ylabel('ATR')
+        except Exception:
+            ax_atr.text(0.5, 0.5, 'ATR unavailable', ha='center', va='center')
     else:
         ax_atr.text(0.5, 0.5, 'ATR not available', ha='center', va='center')
 
