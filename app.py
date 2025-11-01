@@ -1584,6 +1584,6 @@ col1, col2, col3 = st.columns(3)
 with col1:
     st.markdown("🎯 **Main Dashboard**: Chart Analysis, Trade Statistics, Strategy Comparison")
 with col2:
-    st.markdown("� **Portfolio Dashboards**: Analysis & Comparison (sidebar buttons)")
+    st.markdown("🎯 **Portfolio Dashboards**: Analysis & Comparison (sidebar buttons)")
 with col3:
-    st.markdown("� **Supports**: All US stocks, ETFs, Multiple strategies, 20+ stock portfolios")
+    st.markdown("🎯 **Supports**: All US stocks, ETFs, Multiple strategies, 20+ stock portfolios")
